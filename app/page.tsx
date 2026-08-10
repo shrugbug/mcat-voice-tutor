@@ -59,44 +59,72 @@ export default function Home() {
     return () => clearInterval(id);
   }, [connected, startedAt]);
 
-  const handleAction = useCallback(
-    (action: Action, client: RealtimeClient) => {
-      switch (action.kind) {
-        case 'tool_call': {
-          if (action.name === 'show_content') {
-            const args = action.args as { html: string; kind: string };
-            setContent({ html: args.html, kind: args.kind });
-            if (args.kind === 'question') {
-              setTally((t) => ({ ...t, asked: t.asked + 1 }));
-            }
-            client.sendToolResult(action.callId, { ok: true });
-            return;
+  // Resolve one tool_call action to its function_call_output payload. Never throws: every
+  // failure path (fetch rejection, malformed args, dispatcher {error}) resolves to an
+  // {error} payload so the batch below can always send a function_call_output for every
+  // call_id -- an un-acknowledged call_id is exactly what wedges the session (CRITICAL 2).
+  const resolveToolCall = useCallback(
+    async (action: Extract<Action, { kind: 'tool_call' }>): Promise<unknown> => {
+      try {
+        if (action.name === 'show_content') {
+          const args = action.args as { html: string; kind: string };
+          setContent({ html: args.html, kind: args.kind });
+          if (args.kind === 'question') {
+            setTally((t) => ({ ...t, asked: t.asked + 1 }));
           }
-
-          void callTool(action.name, action.args).then((res) => {
-            client.sendToolResult(action.callId, res.error ? { error: res.error } : res.result);
-            if (action.name === 'record_result') {
-              const args = action.args as { correct?: boolean };
-              if (args.correct) {
-                setTally((t) => ({ ...t, correct: t.correct + 1 }));
-              }
-            }
-            if (action.name === 'record_result' || action.name === 'get_student_profile') {
-              refreshSidebar();
-            }
-          });
-          return;
+          return { ok: true };
         }
-        case 'user_transcript':
-          setTranscript((t) => [...t, { speaker: 'user', text: action.text }]);
-          return;
-        case 'bot_transcript':
-          setTranscript((t) => [...t, { speaker: 'bot', text: action.text }]);
-          setModeBadge((m) => m ?? action.text.slice(0, 80));
-          return;
+
+        const res = await callTool(action.name, action.args);
+        if (res.error) return { error: res.error };
+
+        if (action.name === 'record_result') {
+          const args = action.args as { correct?: boolean };
+          if (args.correct) {
+            setTally((t) => ({ ...t, correct: t.correct + 1 }));
+          }
+        }
+        if (action.name === 'record_result' || action.name === 'get_student_profile') {
+          refreshSidebar();
+        }
+        return res.result;
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : 'Tool call failed' };
       }
     },
     [refreshSidebar]
+  );
+
+  // Handles one batch of actions from a single response.done event. Tool calls in the batch
+  // are resolved in parallel, but every function_call_output is queued (sendToolOutput) BEFORE
+  // the single response.create for the whole batch (client.requestResponse()) -- sending
+  // response.create per-call races later calls in the same batch and can wedge the session.
+  const handleActions = useCallback(
+    (actions: Action[], client: RealtimeClient) => {
+      const toolCalls = actions.filter((a): a is Extract<Action, { kind: 'tool_call' }> => a.kind === 'tool_call');
+      const others = actions.filter((a) => a.kind !== 'tool_call');
+
+      for (const action of others) {
+        if (action.kind === 'user_transcript') {
+          setTranscript((t) => [...t, { speaker: 'user', text: action.text }]);
+        } else if (action.kind === 'bot_transcript') {
+          setTranscript((t) => [...t, { speaker: 'bot', text: action.text }]);
+          setModeBadge((m) => m ?? action.text.slice(0, 80));
+        }
+      }
+
+      if (toolCalls.length === 0) return;
+
+      void Promise.all(
+        toolCalls.map(async (action) => ({ callId: action.callId, output: await resolveToolCall(action) }))
+      ).then((results) => {
+        for (const { callId, output } of results) {
+          client.sendToolOutput(callId, output);
+        }
+        client.requestResponse();
+      });
+    },
+    [resolveToolCall]
   );
 
   const handleConnect = useCallback(async () => {
@@ -109,8 +137,15 @@ export default function Home() {
       client.onEvent((event: ServerEvent) => {
         const raw = handleServerEvent(event);
         const actions = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
-        for (const action of actions) {
-          handleAction(action, client);
+        if (actions.length > 0) handleActions(actions, client);
+      });
+      client.onConnectionStateChange((state) => {
+        if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+          setConnected(false);
+          setStartedAt(null);
+          setElapsedMs(0);
+          if (state === 'failed') setError('Connection lost. Click Connect to reconnect.');
+          if (clientRef.current === client) clientRef.current = null;
         }
       });
       await client.connect();
@@ -123,7 +158,7 @@ export default function Home() {
     } finally {
       setConnecting(false);
     }
-  }, [connected, connecting, handleAction]);
+  }, [connected, connecting, handleActions]);
 
   const handleDisconnect = useCallback(() => {
     clientRef.current?.disconnect();

@@ -113,6 +113,7 @@ export class RealtimeClient {
   private dataChannel: RTCDataChannel | null = null;
   private micStream: MediaStream | null = null;
   private readonly handlers = new Set<(event: ServerEvent) => void>();
+  private readonly connectionStateHandlers = new Set<(state: RTCPeerConnectionState) => void>();
 
   constructor(audioElement: HTMLAudioElement) {
     this.audioElement = audioElement;
@@ -122,6 +123,11 @@ export class RealtimeClient {
     this.handlers.add(handler);
   }
 
+  /** Surfaces RTCPeerConnection state changes (e.g. 'connected', 'disconnected', 'failed', 'closed'). */
+  onConnectionStateChange(handler: (state: RTCPeerConnectionState) => void): void {
+    this.connectionStateHandlers.add(handler);
+  }
+
   sendEvent(event: object): void {
     if (!this.dataChannel || this.dataChannel.readyState !== 'open') {
       throw new Error('RealtimeClient: data channel is not open');
@@ -129,8 +135,17 @@ export class RealtimeClient {
     this.dataChannel.send(JSON.stringify(event));
   }
 
-  /** See docs/research/realtime-api-reference.md §5 for the two-event tool-result flow. */
-  sendToolResult(callId: string, output: unknown): void {
+  /**
+   * Sends one function_call_output item for a tool call, WITHOUT triggering a response.
+   * See docs/research/realtime-api-reference.md §5 for the two-event tool-result flow: when a
+   * response.done contains multiple parallel tool calls, every call must get its
+   * function_call_output queued before a single response.create is sent for the whole batch --
+   * sending response.create per-call races the model into replying before later calls in the
+   * same batch have their outputs queued, which can wedge the session waiting on a call that
+   * never gets acknowledged. Callers (app/page.tsx) send one output per call via this method,
+   * then call requestResponse() exactly once after the whole batch is queued.
+   */
+  sendToolOutput(callId: string, output: unknown): void {
     this.sendEvent({
       type: 'conversation.item.create',
       item: {
@@ -139,56 +154,98 @@ export class RealtimeClient {
         output: JSON.stringify(output),
       },
     });
+  }
+
+  /** Requests a model response. Call exactly once after a batch of sendToolOutput calls. */
+  requestResponse(): void {
     this.sendEvent({ type: 'response.create' });
   }
 
   async connect(): Promise<void> {
-    const tokenResponse = await fetch('/api/session');
-    if (!tokenResponse.ok) {
-      throw new Error(`RealtimeClient: failed to fetch session token (${tokenResponse.status})`);
-    }
-    const { value: ephemeralKey } = (await tokenResponse.json()) as SessionTokenResponse;
-
-    const pc = new RTCPeerConnection();
-    this.peerConnection = pc;
-
-    pc.ontrack = (e) => {
-      this.audioElement.srcObject = e.streams[0];
-    };
-
-    this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    for (const track of this.micStream.getTracks()) {
-      pc.addTrack(track, this.micStream);
-    }
-
-    const dc = pc.createDataChannel(DATA_CHANNEL_NAME);
-    this.dataChannel = dc;
-    dc.addEventListener('message', (e: MessageEvent) => {
-      const event = JSON.parse(e.data) as ServerEvent;
-      for (const handler of this.handlers) {
-        handler(event);
+    try {
+      const tokenResponse = await fetch('/api/session');
+      if (!tokenResponse.ok) {
+        throw new Error(`RealtimeClient: failed to fetch session token (${tokenResponse.status})`);
       }
-    });
+      const { value: ephemeralKey } = (await tokenResponse.json()) as SessionTokenResponse;
 
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
+      const pc = new RTCPeerConnection();
+      this.peerConnection = pc;
 
-    const sdpResponse = await fetch(REALTIME_CALLS_URL, {
-      method: 'POST',
-      body: offer.sdp,
-      headers: {
-        Authorization: `Bearer ${ephemeralKey}`,
-        'Content-Type': 'application/sdp',
-      },
-    });
-    if (!sdpResponse.ok) {
-      throw new Error(`RealtimeClient: SDP exchange failed (${sdpResponse.status})`);
+      pc.ontrack = (e) => {
+        this.audioElement.srcObject = e.streams[0];
+      };
+
+      pc.onconnectionstatechange = () => {
+        for (const handler of this.connectionStateHandlers) {
+          handler(pc.connectionState);
+        }
+      };
+
+      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      for (const track of this.micStream.getTracks()) {
+        pc.addTrack(track, this.micStream);
+      }
+
+      const dc = pc.createDataChannel(DATA_CHANNEL_NAME);
+      this.dataChannel = dc;
+      dc.addEventListener('message', (e: MessageEvent) => {
+        const event = JSON.parse(e.data) as ServerEvent;
+        for (const handler of this.handlers) {
+          handler(event);
+        }
+      });
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      const sdpResponse = await fetch(REALTIME_CALLS_URL, {
+        method: 'POST',
+        body: offer.sdp,
+        headers: {
+          Authorization: `Bearer ${ephemeralKey}`,
+          'Content-Type': 'application/sdp',
+        },
+      });
+      if (!sdpResponse.ok) {
+        throw new Error(`RealtimeClient: SDP exchange failed (${sdpResponse.status})`);
+      }
+      const answer: RTCSessionDescriptionInit = {
+        type: 'answer',
+        sdp: await sdpResponse.text(),
+      };
+      await pc.setRemoteDescription(answer);
+
+      // Wait for the data channel to actually open before resolving -- sendEvent/sendToolOutput
+      // require an open channel, and the caller (app/page.tsx) sends the first response.create
+      // immediately after connect() resolves so the bot fetches the profile and greets.
+      await new Promise<void>((resolve, reject) => {
+        if (dc.readyState === 'open') {
+          resolve();
+          return;
+        }
+        dc.addEventListener('open', () => resolve(), { once: true });
+        dc.addEventListener(
+          'error',
+          () => reject(new Error('RealtimeClient: data channel failed to open')),
+          { once: true }
+        );
+      });
+
+      this.requestResponse();
+    } catch (err) {
+      // Failed connect: stop the mic and tear down anything partially set up so a retry
+      // doesn't leak a live microphone track or a half-open peer connection.
+      for (const track of this.micStream?.getTracks() ?? []) {
+        track.stop();
+      }
+      this.micStream = null;
+      this.dataChannel?.close();
+      this.dataChannel = null;
+      this.peerConnection?.close();
+      this.peerConnection = null;
+      throw err;
     }
-    const answer: RTCSessionDescriptionInit = {
-      type: 'answer',
-      sdp: await sdpResponse.text(),
-    };
-    await pc.setRemoteDescription(answer);
   }
 
   disconnect(): void {

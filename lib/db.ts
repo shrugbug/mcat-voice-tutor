@@ -29,6 +29,11 @@ export function openDb(path: string = DEFAULT_DB_PATH) {
     CREATE TABLE IF NOT EXISTS transcripts(
       id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
       role TEXT NOT NULL CHECK(role IN ('user','bot','system')), text TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS feedback(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      kind TEXT NOT NULL CHECK(kind IN ('ui','ux','content','other')),
+      quote TEXT NOT NULL, paraphrase TEXT,
+      status TEXT NOT NULL DEFAULT 'new' CHECK(status IN ('new','proposed','done','declined')));
   `);
 
   const categoryColumns = db.pragma('table_info(categories)') as { name: string }[];

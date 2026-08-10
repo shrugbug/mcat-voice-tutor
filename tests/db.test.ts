@@ -138,3 +138,62 @@ describe('transcripts table', () => {
     db.close();
   });
 });
+
+describe('feedback table', () => {
+  test('round-trips kind, quote, paraphrase, and defaults status to new', () => {
+    const db = openDb(':memory:');
+
+    db.prepare(`INSERT INTO feedback (kind, quote, paraphrase) VALUES (?, ?, ?)`).run(
+      'ui',
+      'the mastery chart is too small to read',
+      'Wants a bigger mastery chart'
+    );
+
+    const row = db.prepare(`SELECT kind, quote, paraphrase, status FROM feedback`).get();
+    expect(row).toEqual({
+      kind: 'ui',
+      quote: 'the mastery chart is too small to read',
+      paraphrase: 'Wants a bigger mastery chart',
+      status: 'new',
+    });
+
+    db.close();
+  });
+
+  test('rejects a kind outside ui/ux/content/other via the CHECK constraint', () => {
+    const db = openDb(':memory:');
+
+    expect(() =>
+      db.prepare(`INSERT INTO feedback (kind, quote) VALUES (?, ?)`).run('bug', 'not allowed')
+    ).toThrow();
+
+    db.close();
+  });
+
+  test('rejects a status outside new/proposed/done/declined via the CHECK constraint', () => {
+    const db = openDb(':memory:');
+
+    expect(() =>
+      db
+        .prepare(`INSERT INTO feedback (kind, quote, status) VALUES (?, ?, ?)`)
+        .run('ux', 'confusing flow', 'archived')
+    ).toThrow();
+
+    db.close();
+  });
+
+  test('allows a transition from new to proposed', () => {
+    const db = openDb(':memory:');
+    const { lastInsertRowid } = db
+      .prepare(`INSERT INTO feedback (kind, quote) VALUES (?, ?)`)
+      .run('ux', 'confusing flow');
+
+    db.prepare(`UPDATE feedback SET status = 'proposed' WHERE id = ?`).run(lastInsertRowid);
+
+    expect(db.prepare(`SELECT status FROM feedback WHERE id = ?`).get(lastInsertRowid)).toEqual({
+      status: 'proposed',
+    });
+
+    db.close();
+  });
+});

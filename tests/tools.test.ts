@@ -143,4 +143,44 @@ describe('dispatchTool', () => {
   test.each(['show_content', 'render_view'])('throws for client-side tool %s', async (name) => {
     await expect(dispatchTool(db, name, {})).rejects.toThrow(`Unknown tool: ${name}`);
   });
+
+  test('record_feedback inserts a feedback row and returns ok', async () => {
+    const result = await dispatchTool(db, 'record_feedback', {
+      kind: 'ui',
+      quote: 'the mastery chart is too small to read',
+      paraphrase: 'Wants a bigger mastery chart',
+    });
+
+    expect(result).toEqual({ ok: true });
+    expect(
+      db.prepare('SELECT kind, quote, paraphrase, status FROM feedback').get()
+    ).toEqual({
+      kind: 'ui',
+      quote: 'the mastery chart is too small to read',
+      paraphrase: 'Wants a bigger mastery chart',
+      status: 'new',
+    });
+  });
+
+  test('record_feedback inserts with a null paraphrase when omitted', async () => {
+    await dispatchTool(db, 'record_feedback', { kind: 'ux', quote: 'this flow confused me' });
+
+    expect(db.prepare('SELECT paraphrase FROM feedback').get()).toEqual({ paraphrase: null });
+  });
+
+  test('record_feedback rejects an unknown kind', async () => {
+    await expect(
+      dispatchTool(db, 'record_feedback', { kind: 'bug', quote: 'not allowed' })
+    ).rejects.toBeInstanceOf(ZodError);
+  });
+
+  test('record_feedback rejects a missing quote', async () => {
+    await expect(dispatchTool(db, 'record_feedback', { kind: 'ui' })).rejects.toBeInstanceOf(ZodError);
+  });
+
+  test('record_feedback rejects a quote over 1000 characters', async () => {
+    await expect(
+      dispatchTool(db, 'record_feedback', { kind: 'ui', quote: 'x'.repeat(1001) })
+    ).rejects.toBeInstanceOf(ZodError);
+  });
 });

@@ -43,6 +43,12 @@ const searchMaterialsArgsSchema = z.strictObject({
   k: z.number().int().positive().optional(),
 });
 
+const recordFeedbackArgsSchema = z.strictObject({
+  kind: z.enum(['ui', 'ux', 'content', 'other']),
+  quote: z.string().min(1).max(1000),
+  paraphrase: z.string().optional(),
+});
+
 const endSessionSummaryArgsSchema = z.strictObject({
   mode: z.string(),
   summary: z.string(),
@@ -176,6 +182,29 @@ export const TOOL_DEFS = [
         k: { type: 'integer', minimum: 1, description: 'Optional maximum number of chunks.' },
       },
       required: ['query'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'record_feedback',
+    description:
+      "Store the student's feedback about the interface or experience the moment they voice it — a complaint, wish, or suggestion about how the app looks/works. quote = their words as close to verbatim as the transcript allows.",
+    parameters: {
+      type: 'object',
+      properties: {
+        kind: {
+          type: 'string',
+          enum: ['ui', 'ux', 'content', 'other'],
+          description: 'The category of feedback.',
+        },
+        quote: {
+          type: 'string',
+          description: "The student's words, as close to verbatim as the transcript allows (1-1000 characters).",
+        },
+        paraphrase: { type: 'string', description: 'Optional one-line paraphrase of the feedback.' },
+      },
+      required: ['kind', 'quote'],
       additionalProperties: false,
     },
   },
@@ -327,6 +356,14 @@ export async function dispatchTool(db: DB, name: string, args: unknown): Promise
       const { query, k } = searchMaterialsArgsSchema.parse(args);
       const [queryEmbedding] = await embed([query]);
       return searchMaterials(db, queryEmbedding, k);
+    }
+
+    case 'record_feedback': {
+      const feedback = recordFeedbackArgsSchema.parse(args);
+      db.prepare(
+        `INSERT INTO feedback (kind, quote, paraphrase) VALUES (@kind, @quote, @paraphrase)`
+      ).run({ kind: feedback.kind, quote: feedback.quote, paraphrase: feedback.paraphrase ?? null });
+      return { ok: true };
     }
 
     case 'end_session_summary': {

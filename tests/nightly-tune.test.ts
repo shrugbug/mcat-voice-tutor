@@ -3,7 +3,7 @@ import RawDatabase from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { openDb } from '../lib/db';
 import { seedTaxonomy, type Taxonomy } from '../lib/student';
-import { buildTuningPrompt, gatherTuningData, type TuningData } from '../scripts/nightly-tune';
+import { buildTuningPrompt, gatherTuningData, markFeedbackProposed, type TuningData } from '../scripts/nightly-tune';
 
 /**
  * openDb() now always creates the episodes table (WS-A merged into lib/db.ts). To genuinely
@@ -54,6 +54,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
       ],
       episodes: null,
       transcript: null,
+      feedback: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- 4A: 4 attempts, 75% accuracy');
@@ -69,6 +70,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
       ],
       episodes: null,
       transcript: null,
+      feedback: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- content: 2');
@@ -76,7 +78,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('notes episodic memory is unavailable when episodes is null (WS-A not merged)', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(episodic memory not available yet — WS-A not merged)');
   });
@@ -90,6 +92,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
         { categoryId: '4B', errorType: null, misconception: null },
       ],
       transcript: null,
+      feedback: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- 4A (reasoning): Confused impulse with momentum');
@@ -97,7 +100,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('handles zero attempts without dividing by zero', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(no results recorded today)');
     expect(prompt).toContain('(no error types recorded today)');
@@ -105,7 +108,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('instructs the model never to rewrite instructions itself', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toMatch(/Do NOT rewrite the instructions yourself/);
   });
@@ -119,6 +122,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
         { role: 'user', text: 'What is impulse?' },
         { role: 'bot', text: 'Impulse is force times time. Can you define momentum?' },
       ],
+      feedback: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('DIALOGUE');
@@ -128,16 +132,50 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('omits dialogue content cleanly when transcript is an empty array', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: [] };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: [], feedback: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('DIALOGUE');
     expect(prompt).toContain('(no transcript recorded today)');
   });
 
   test('notes transcript is unavailable when transcript is null (transcripts table not present)', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(transcript not available yet — transcripts table not present)');
+  });
+
+  test('includes a UI/UX proposals instruction with quoted feedback when feedback exists', () => {
+    const data: TuningData = {
+      date: '2026-08-10',
+      results: [],
+      episodes: null,
+      transcript: null,
+      feedback: [
+        { id: 1, kind: 'ui', quote: 'the mastery chart is too small to read', paraphrase: 'Wants a bigger chart' },
+        { id: 2, kind: 'ux', quote: 'I got lost switching modes', paraphrase: null },
+      ],
+    };
+    const prompt = buildTuningPrompt(data);
+    expect(prompt).toContain('UI/UX FEEDBACK');
+    expect(prompt).toContain('- [ui] "the mastery chart is too small to read" — Wants a bigger chart');
+    expect(prompt).toContain('- [ux] "I got lost switching modes"');
+    expect(prompt).toContain('## UI/UX proposals');
+    expect(prompt).toContain('## Instruction-tuning proposals');
+    expect(prompt).toContain('ContentPanel');
+    expect(prompt).toContain('MasterySidebar');
+  });
+
+  test('omits UI/UX feedback content cleanly when feedback is an empty array', () => {
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: [] };
+    const prompt = buildTuningPrompt(data);
+    expect(prompt).toContain('UI/UX FEEDBACK');
+    expect(prompt).toContain('(no feedback recorded today)');
+  });
+
+  test('notes feedback is unavailable when feedback is null (feedback table not present)', () => {
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const prompt = buildTuningPrompt(data);
+    expect(prompt).toContain('(feedback not available yet — feedback table not present)');
   });
 });
 
@@ -149,12 +187,13 @@ describe('gatherTuningData (db read, no network)', () => {
     seedTaxonomy(db, tax);
   });
 
-  test('returns null episodes and null transcript when neither table exists', () => {
+  test('returns null episodes, transcript, and feedback when none of those tables exist', () => {
     const preWsA = openPreWsADb();
     seedTaxonomy(preWsA, tax);
     const data = gatherTuningData(preWsA);
     expect(data.episodes).toBeNull();
     expect(data.transcript).toBeNull();
+    expect(data.feedback).toBeNull();
   });
 
   test("collects today's results only, excluding older rows", () => {
@@ -205,5 +244,47 @@ describe('gatherTuningData (db read, no network)', () => {
     expect(data.transcript).toHaveLength(400);
     expect(data.transcript![0].text).toBe('line-50');
     expect(data.transcript![399].text).toBe('line-449');
+  });
+
+  test('collects only today\'s new feedback rows, excluding older and non-new rows', () => {
+    // openDb() already creates the feedback table -- no manual CREATE TABLE needed.
+    db.prepare(
+      `INSERT INTO feedback (ts, kind, quote, status) VALUES (datetime('now'), 'ui', 'todays new feedback', 'new')`
+    ).run();
+    db.prepare(
+      `INSERT INTO feedback (ts, kind, quote, status) VALUES (datetime('now'), 'ux', 'already proposed', 'proposed')`
+    ).run();
+    db.prepare(
+      `INSERT INTO feedback (ts, kind, quote, status) VALUES (datetime('now', '-2 days'), 'ui', 'old feedback', 'new')`
+    ).run();
+
+    const data = gatherTuningData(db);
+    expect(data.feedback).toHaveLength(1);
+    expect(data.feedback![0]).toMatchObject({ kind: 'ui', quote: 'todays new feedback' });
+  });
+});
+
+describe('markFeedbackProposed (db write, no network)', () => {
+  test('transitions the given feedback rows from new to proposed and leaves others untouched', () => {
+    const db = openDb(':memory:');
+    const first = db.prepare(`INSERT INTO feedback (kind, quote) VALUES ('ui', 'first')`).run();
+    const second = db.prepare(`INSERT INTO feedback (kind, quote) VALUES ('ux', 'second')`).run();
+
+    markFeedbackProposed(db, [Number(first.lastInsertRowid)]);
+
+    expect(db.prepare('SELECT status FROM feedback WHERE id = ?').get(first.lastInsertRowid)).toEqual({
+      status: 'proposed',
+    });
+    expect(db.prepare('SELECT status FROM feedback WHERE id = ?').get(second.lastInsertRowid)).toEqual({
+      status: 'new',
+    });
+  });
+
+  test('is a no-op for an empty id list', () => {
+    const db = openDb(':memory:');
+    db.prepare(`INSERT INTO feedback (kind, quote) VALUES ('ui', 'first')`).run();
+
+    expect(() => markFeedbackProposed(db, [])).not.toThrow();
+    expect(db.prepare('SELECT status FROM feedback').get()).toEqual({ status: 'new' });
   });
 });

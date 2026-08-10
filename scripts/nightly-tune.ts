@@ -28,6 +28,13 @@ export type TranscriptRow = {
   text: string;
 };
 
+export type FeedbackRow = {
+  id: number;
+  kind: 'ui' | 'ux' | 'content' | 'other';
+  quote: string;
+  paraphrase: string | null;
+};
+
 const MAX_TRANSCRIPT_LINES = 400;
 
 export type TuningData = {
@@ -37,6 +44,8 @@ export type TuningData = {
   episodes: EpisodeRow[] | null;
   /** null when the transcripts table doesn't exist yet in this db. */
   transcript: TranscriptRow[] | null;
+  /** null when the feedback table doesn't exist yet in this db. */
+  feedback: FeedbackRow[] | null;
 };
 
 function hasTable(db: DB, table: string): boolean {
@@ -85,7 +94,27 @@ export function gatherTuningData(db: DB): TuningData {
         .all(MAX_TRANSCRIPT_LINES) as TranscriptRow[])
     : null;
 
-  return { date: today, results, episodes, transcript };
+  const feedback = hasTable(db, 'feedback')
+    ? (db
+        .prepare(
+          `SELECT id, kind, quote, paraphrase
+           FROM feedback
+           WHERE date(ts) = date('now') AND status = 'new'`
+        )
+        .all() as FeedbackRow[])
+    : null;
+
+  return { date: today, results, episodes, transcript, feedback };
+}
+
+/** Marks the given feedback rows as 'proposed' after their proposals have been written out. Read-write. */
+export function markFeedbackProposed(db: DB, ids: number[]): void {
+  if (ids.length === 0) return;
+  const stmt = db.prepare(`UPDATE feedback SET status = 'proposed' WHERE id = ? AND status = 'new'`);
+  const updateAll = db.transaction((rows: number[]) => {
+    for (const id of rows) stmt.run(id);
+  });
+  updateAll(ids);
 }
 
 /**
@@ -123,6 +152,10 @@ export function buildTuningPrompt(data: TuningData): string {
 
   const dialogueLines = (data.transcript ?? []).map((line) => `${line.role}: ${line.text}`);
 
+  const feedbackLines = (data.feedback ?? []).map(
+    (f) => `- [${f.kind}] "${f.quote}"${f.paraphrase ? ` — ${f.paraphrase}` : ''}`
+  );
+
   const sections = [
     'You are tuning the examiner instructions for an MCAT voice-study-bot based on today\'s real study data.',
     'Analyze the data below and propose SPECIFIC, ACTIONABLE tuning changes to the examiner instructions. Consider:',
@@ -156,7 +189,16 @@ export function buildTuningPrompt(data: TuningData): string {
         ? dialogueLines.join('\n')
         : '(no transcript recorded today)',
     '',
-    'Output format: a markdown list of numbered proposals, each with a one-line rationale citing the specific data point that motivated it. Do NOT rewrite the instructions yourself — only propose changes for a human to apply.',
+    'UI/UX FEEDBACK (voice-captured student comments about the interface or experience, quoted near-verbatim):',
+    data.feedback === null
+      ? '(feedback not available yet — feedback table not present)'
+      : feedbackLines.length > 0
+        ? feedbackLines.join('\n')
+        : '(no feedback recorded today)',
+    '',
+    'Output format: TWO separate markdown sections.',
+    '1. "## Instruction-tuning proposals" — a numbered list of proposed changes to lib/instructions.ts (the examiner prompt) only, each with a one-line rationale citing the specific data point that motivated it. Do NOT rewrite the instructions yourself — only propose changes for a human to apply.',
+    '2. "## UI/UX proposals" — a numbered list, one per UI/UX feedback item above (omit this section entirely if there is no feedback today). Each proposal must be concrete and minimal, and reference the app\'s actual components where relevant: ContentPanel, MasterySidebar, the six render_view components (flashcard_deck, answer_grid, timer, mastery_chart, data_table, passage), or the landing page. Keep these clearly separate from the instruction-tuning proposals — they are about the app\'s UI code, not lib/instructions.ts.',
   ];
 
   return sections.join('\n');
@@ -240,6 +282,18 @@ async function main(): Promise<void> {
   mkdirSync(TUNING_DIR, { recursive: true });
   const outPath = join(TUNING_DIR, `proposal-${data.date}.md`);
   writeFileSync(outPath, markdown, 'utf8');
+
+  if (data.feedback && data.feedback.length > 0) {
+    const writeDb = openDb();
+    try {
+      markFeedbackProposed(
+        writeDb,
+        data.feedback.map((f) => f.id)
+      );
+    } finally {
+      writeDb.close();
+    }
+  }
 
   notify(`Tuning proposal ready: ${data.results.length} attempts analyzed.`);
 

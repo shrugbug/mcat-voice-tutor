@@ -1,8 +1,33 @@
 import { beforeEach, describe, expect, test } from 'vitest';
+import RawDatabase from 'better-sqlite3';
 import { openDb } from '../lib/db';
 import { seedTaxonomy, seedSectionScores, recordResult, type Taxonomy } from '../lib/student';
 import { buildBriefing } from '../lib/briefing';
 import type Database from 'better-sqlite3';
+
+/**
+ * openDb() now always creates categories.due_at/interval_days and the episodes table (WS-A
+ * merged into lib/db.ts). To genuinely exercise lib/briefing.ts's tolerance branches for older
+ * db files that predate WS-A, build that old schema directly instead of going through openDb().
+ * Mirrors lib/db.ts's categories/results/sessions shapes minus due_at/interval_days, no episodes.
+ */
+function openPreWsADb(): Database.Database {
+  const db = new RawDatabase(':memory:');
+  db.exec(`
+    CREATE TABLE categories(
+      id TEXT PRIMARY KEY, section TEXT NOT NULL, name TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '[]',
+      mastery REAL NOT NULL DEFAULT 0.5, attempts INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE results(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      category_id TEXT NOT NULL, difficulty INTEGER NOT NULL, correct INTEGER NOT NULL,
+      error_type TEXT, mode TEXT NOT NULL, note TEXT);
+    CREATE TABLE sessions(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      mode TEXT NOT NULL, summary TEXT NOT NULL, focus_next TEXT NOT NULL);
+  `);
+  return db;
+}
 
 const tax: Taxonomy = {
   sections: [
@@ -34,7 +59,7 @@ describe('buildBriefing (no WS-A schema: no due_at, no episodes)', () => {
   let db: Database.Database;
 
   beforeEach(() => {
-    db = openDb(':memory:');
+    db = openPreWsADb();
     seedTaxonomy(db, tax);
     seedSectionScores(db, { chem_phys: 129 });
   });
@@ -85,7 +110,7 @@ describe('buildBriefing (no WS-A schema: no due_at, no episodes)', () => {
   });
 
   test('returns fallback plan text when no categories are seeded', () => {
-    const empty = openDb(':memory:');
+    const empty = openPreWsADb();
     const md = buildBriefing(empty, futureDate(5));
     expect(md).toContain('No categories seeded yet — run `npm run seed` before the next session.');
   });
@@ -95,17 +120,9 @@ describe('buildBriefing (with WS-A schema: due_at + episodes present)', () => {
   let db: Database.Database;
 
   beforeEach(() => {
+    // openDb() now always creates categories.due_at/interval_days and the episodes table
+    // (WS-A merged into lib/db.ts) — no manual schema simulation needed anymore.
     db = openDb(':memory:');
-    // Simulate WS-A's schema additions landing in the same db.
-    db.exec(`
-      ALTER TABLE categories ADD COLUMN due_at TEXT NULL;
-      ALTER TABLE categories ADD COLUMN interval_days REAL NOT NULL DEFAULT 1;
-      CREATE TABLE episodes(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
-        category_id TEXT NOT NULL, stem TEXT, options_json TEXT, correct_index INT,
-        chosen_index INT, error_type TEXT, misconception TEXT, student_reasoning TEXT,
-        embedding BLOB NULL);
-    `);
     seedTaxonomy(db, tax);
     seedSectionScores(db, { chem_phys: 129 });
   });
@@ -129,13 +146,13 @@ describe('buildBriefing (with WS-A schema: due_at + episodes present)', () => {
 
   test('recent misconceptions section reports up to 2 most recent, most-recent first', () => {
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now', '-3 hours'), '4A', 'Confused impulse with momentum')`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now', '-3 hours'), '4A', 'stem', '[]', 0, 0, 'Confused impulse with momentum')`
     ).run();
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now', '-2 hours'), '4B', 'Applied Bernoulli without steady flow')`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now', '-2 hours'), '4B', 'stem', '[]', 0, 0, 'Applied Bernoulli without steady flow')`
     ).run();
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now', '-1 hours'), '5A', 'Mixed up entropy sign convention')`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now', '-1 hours'), '5A', 'stem', '[]', 0, 0, 'Mixed up entropy sign convention')`
     ).run();
     const md = buildBriefing(db, futureDate(5));
     const section = md.slice(md.indexOf('## Recent misconceptions'), md.indexOf("## Today's plan"));
@@ -146,7 +163,7 @@ describe('buildBriefing (with WS-A schema: due_at + episodes present)', () => {
 
   test('episodes with null misconception are excluded', () => {
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now'), '4A', NULL)`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now'), '4A', 'stem', '[]', 0, 0, NULL)`
     ).run();
     const md = buildBriefing(db, futureDate(5));
     const section = md.slice(md.indexOf('## Recent misconceptions'), md.indexOf("## Today's plan"));

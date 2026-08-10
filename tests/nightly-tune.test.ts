@@ -1,8 +1,33 @@
 import { beforeEach, describe, expect, test } from 'vitest';
+import RawDatabase from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { openDb } from '../lib/db';
 import { seedTaxonomy, type Taxonomy } from '../lib/student';
 import { buildTuningPrompt, gatherTuningData, type TuningData } from '../scripts/nightly-tune';
+
+/**
+ * openDb() now always creates the episodes table (WS-A merged into lib/db.ts). To genuinely
+ * exercise gatherTuningData's tolerance branch for older db files that predate WS-A, build that
+ * old schema directly instead of going through openDb(). Mirrors lib/db.ts's categories/results
+ * shapes minus due_at/interval_days, no episodes.
+ */
+function openPreWsADb(): Database.Database {
+  const db = new RawDatabase(':memory:');
+  db.exec(`
+    CREATE TABLE categories(
+      id TEXT PRIMARY KEY, section TEXT NOT NULL, name TEXT NOT NULL,
+      topics TEXT NOT NULL DEFAULT '[]',
+      mastery REAL NOT NULL DEFAULT 0.5, attempts INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE results(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      category_id TEXT NOT NULL, difficulty INTEGER NOT NULL, correct INTEGER NOT NULL,
+      error_type TEXT, mode TEXT NOT NULL, note TEXT);
+    CREATE TABLE sessions(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      mode TEXT NOT NULL, summary TEXT NOT NULL, focus_next TEXT NOT NULL);
+  `);
+  return db;
+}
 
 const tax: Taxonomy = {
   sections: [
@@ -92,7 +117,9 @@ describe('gatherTuningData (db read, no network)', () => {
   });
 
   test('returns null episodes when the episodes table does not exist', () => {
-    const data = gatherTuningData(db);
+    const preWsA = openPreWsADb();
+    seedTaxonomy(preWsA, tax);
+    const data = gatherTuningData(preWsA);
     expect(data.episodes).toBeNull();
   });
 
@@ -109,18 +136,12 @@ describe('gatherTuningData (db read, no network)', () => {
   });
 
   test('collects episodes when the table exists, scoped to today', () => {
-    db.exec(`
-      CREATE TABLE episodes(
-        id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
-        category_id TEXT NOT NULL, stem TEXT, options_json TEXT, correct_index INT,
-        chosen_index INT, error_type TEXT, misconception TEXT, student_reasoning TEXT,
-        embedding BLOB NULL);
-    `);
+    // openDb() already creates the episodes table (WS-A merged) — no manual CREATE TABLE needed.
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now'), '4A', 'todays')`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now'), '4A', 'stem', '[]', 0, 0, 'todays')`
     ).run();
     db.prepare(
-      `INSERT INTO episodes (ts, category_id, misconception) VALUES (datetime('now', '-2 days'), '4B', 'old')`
+      `INSERT INTO episodes (ts, category_id, stem, options_json, correct_index, chosen_index, misconception) VALUES (datetime('now', '-2 days'), '4B', 'stem', '[]', 0, 0, 'old')`
     ).run();
     const data = gatherTuningData(db);
     expect(data.episodes).toHaveLength(1);

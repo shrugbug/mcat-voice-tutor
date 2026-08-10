@@ -241,6 +241,12 @@ export default function Home() {
   const resolveToolCall = useCallback(
     async (action: Extract<Action, { kind: 'tool_call' }>): Promise<unknown> => {
       try {
+        if (action.parseError) {
+          return {
+            error: `Your tool call arguments were not valid JSON (${action.parseError}). Re-send the ${action.name} call with complete, valid JSON arguments.`,
+          };
+        }
+
         if (action.name === 'show_content') {
           const args = action.args as { html: string; kind: string };
           setContent({ html: args.html, kind: args.kind });

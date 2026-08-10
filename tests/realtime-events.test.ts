@@ -145,4 +145,82 @@ describe('handleServerEvent', () => {
   test('unrecognized event type -> null', () => {
     expect(handleServerEvent({ type: 'session.created' })).toBeNull();
   });
+
+  // Regression: live session 2026-08-10 — the model emitted a function_call
+  // whose `arguments` string was truncated mid-string ("Unterminated string in
+  // JSON at position 504"), crashing the data-channel handler. Malformed
+  // arguments must yield a tool_call action carrying parseError, not a throw.
+  test('response.done with truncated arguments JSON -> tool_call with parseError, no throw', () => {
+    const truncated = {
+      type: 'response.done',
+      event_id: 'event_regress_1',
+      response: {
+        object: 'realtime.response',
+        id: 'resp_regress_1',
+        status: 'completed',
+        status_details: null,
+        output: [
+          {
+            object: 'realtime.item',
+            id: 'item_regress_1',
+            type: 'function_call',
+            status: 'completed',
+            name: 'record_result',
+            call_id: 'call_regress_1',
+            arguments: '{"categoryId":"4A","difficulty":2,"correct":true,"mode":"drill","note":"truncat',
+          },
+        ],
+      },
+    };
+    const result = handleServerEvent(truncated);
+    expect(Array.isArray(result)).toBe(true);
+    const [call] = result as Extract<import('../lib/realtime-client').Action, { kind: 'tool_call' }>[];
+    expect(call.kind).toBe('tool_call');
+    expect(call.callId).toBe('call_regress_1');
+    expect(call.name).toBe('record_result');
+    expect(call.args).toBeNull();
+    expect(call.parseError).toMatch(/JSON|string/i);
+  });
+
+  test('mixed batch: one valid + one truncated call both surface, valid one parsed', () => {
+    const mixed = {
+      type: 'response.done',
+      event_id: 'event_regress_2',
+      response: {
+        object: 'realtime.response',
+        id: 'resp_regress_2',
+        status: 'completed',
+        status_details: null,
+        output: [
+          {
+            object: 'realtime.item',
+            id: 'item_ok',
+            type: 'function_call',
+            status: 'completed',
+            name: 'get_student_profile',
+            call_id: 'call_ok',
+            arguments: '{}',
+          },
+          {
+            object: 'realtime.item',
+            id: 'item_bad',
+            type: 'function_call',
+            status: 'completed',
+            name: 'generate_question',
+            call_id: 'call_bad',
+            arguments: '{"categoryId":"5A","diffic',
+          },
+        ],
+      },
+    };
+    const result = handleServerEvent(mixed) as Extract<
+      import('../lib/realtime-client').Action,
+      { kind: 'tool_call' }
+    >[];
+    expect(result).toHaveLength(2);
+    expect(result[0].args).toEqual({});
+    expect(result[0].parseError).toBeUndefined();
+    expect(result[1].args).toBeNull();
+    expect(result[1].parseError).toBeTruthy();
+  });
 });

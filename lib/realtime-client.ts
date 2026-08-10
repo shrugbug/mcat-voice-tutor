@@ -21,7 +21,7 @@
 
 /** Actions produced by handleServerEvent, consumed by the UI/orchestration layer (Task 8). */
 export type Action =
-  | { kind: 'tool_call'; callId: string; name: string; args: unknown }
+  | { kind: 'tool_call'; callId: string; name: string; args: unknown; parseError?: string }
   | { kind: 'user_transcript'; text: string }
   | { kind: 'bot_transcript'; text: string };
 
@@ -68,12 +68,27 @@ export function handleServerEvent(event: ServerEvent): Action | Action[] | null 
     case 'response.done': {
       const response = event.response as { output?: unknown } | undefined;
       const output = Array.isArray(response?.output) ? response!.output : [];
-      const calls: Action[] = output.filter(isFunctionCallItem).map((item) => ({
-        kind: 'tool_call' as const,
-        callId: item.call_id,
-        name: item.name,
-        args: JSON.parse(item.arguments) as unknown,
-      }));
+      const calls: Action[] = output.filter(isFunctionCallItem).map((item) => {
+        // The model occasionally emits truncated/invalid JSON in `arguments`;
+        // that must surface as a tool-error result the model can retry on,
+        // never a thrown exception inside the data-channel handler.
+        try {
+          return {
+            kind: 'tool_call' as const,
+            callId: item.call_id,
+            name: item.name,
+            args: JSON.parse(item.arguments) as unknown,
+          };
+        } catch (err) {
+          return {
+            kind: 'tool_call' as const,
+            callId: item.call_id,
+            name: item.name,
+            args: null,
+            parseError: err instanceof Error ? err.message : 'invalid JSON in arguments',
+          };
+        }
+      });
       return calls.length > 0 ? calls : null;
     }
 
@@ -278,7 +293,13 @@ export class RealtimeClient {
       const dc = pc.createDataChannel(DATA_CHANNEL_NAME);
       this.dataChannel = dc;
       dc.addEventListener('message', (e: MessageEvent) => {
-        const event = JSON.parse(e.data) as ServerEvent;
+        let event: ServerEvent;
+        try {
+          event = JSON.parse(e.data) as ServerEvent;
+        } catch {
+          console.warn('realtime: dropping malformed data-channel frame');
+          return;
+        }
         for (const handler of this.handlers) {
           handler(event);
         }

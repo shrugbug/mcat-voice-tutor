@@ -51,3 +51,4 @@ data/acceptance.db-shm
 pdfs/
 .env
 resources/
+.superpowers/

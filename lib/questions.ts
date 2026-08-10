@@ -107,11 +107,11 @@ async function requestQuestion(params: QuestionParams): Promise<unknown> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error('OPENAI_API_KEY is not set');
 
-  const model = process.env.QUESTION_MODEL;
-  if (!model) throw new Error('QUESTION_MODEL is not set');
+  const model = process.env.QUESTION_MODEL || 'gpt-5.1';
 
   const response = await fetch(CHAT_COMPLETIONS_URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(90_000),
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -149,14 +149,45 @@ async function requestQuestion(params: QuestionParams): Promise<unknown> {
   return JSON.parse(content) as unknown;
 }
 
+/**
+ * Checks the invariants the caller (lib/tools.ts generate_question) relies on but that
+ * QuestionSchema alone cannot express: the question must actually be FOR the requested
+ * category and difficulty, and passage null-ness must match the requested style (a 'passage'
+ * style question must have a non-null passage; a 'discrete' style question must have passage:
+ * null). A schema-valid question that silently answers a different category/difficulty/style
+ * than requested is a worse failure than a rejected one, since it corrupts mastery tracking.
+ */
+function violatesInvariants(question: Question, params: QuestionParams): string | null {
+  if (question.categoryId !== params.categoryId) {
+    return `categoryId mismatch: requested ${params.categoryId}, got ${question.categoryId}`;
+  }
+  if (question.difficulty !== params.difficulty) {
+    return `difficulty mismatch: requested ${params.difficulty}, got ${question.difficulty}`;
+  }
+  const expectsPassage = params.style === 'passage';
+  const hasPassage = question.passage !== null;
+  if (expectsPassage !== hasPassage) {
+    return `style mismatch: style=${params.style} but passage is ${hasPassage ? 'present' : 'null'}`;
+  }
+  return null;
+}
+
 export async function generateQuestion(params: QuestionParams): Promise<Question> {
-  let validationError: z.ZodError | undefined;
+  let lastError: Error | undefined;
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const parsed = QuestionSchema.safeParse(await requestQuestion(params));
-    if (parsed.success) return parsed.data;
-    validationError = parsed.error;
+    if (!parsed.success) {
+      lastError = parsed.error;
+      continue;
+    }
+    const invariantError = violatesInvariants(parsed.data, params);
+    if (invariantError) {
+      lastError = new Error(`generateQuestion: invariant violated: ${invariantError}`);
+      continue;
+    }
+    return parsed.data;
   }
 
-  throw validationError;
+  throw lastError;
 }

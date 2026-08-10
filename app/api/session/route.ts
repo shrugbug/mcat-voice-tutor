@@ -13,15 +13,16 @@ const clientSecretSchema = z.object({
 
 export async function GET(): Promise<Response> {
   const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.REALTIME_MODEL;
+  const model = process.env.REALTIME_MODEL || 'gpt-realtime-2.1';
 
-  if (!apiKey || !model) {
+  if (!apiKey) {
     return Response.json({ error: 'OpenAI realtime configuration is missing' }, { status: 500 });
   }
 
   try {
     const response = await fetch(CLIENT_SECRETS_URL, {
       method: 'POST',
+      signal: AbortSignal.timeout(30_000),
       headers: {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -40,6 +41,11 @@ export async function GET(): Promise<Response> {
                 create_response: true,
                 interrupt_response: true,
               },
+              // Per docs/research/realtime-api-reference.md §6: without this, the model still
+              // understands audio directly but no
+              // conversation.item.input_audio_transcription.* events fire, so the UI transcript
+              // (handleServerEvent's user_transcript action) never populates.
+              transcription: { model: 'whisper-1', language: 'en' },
             },
             output: { voice: 'marin' },
           },

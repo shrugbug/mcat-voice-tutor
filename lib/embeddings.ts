@@ -15,6 +15,7 @@ export async function embed(texts: string[]): Promise<Float32Array[]> {
     const batch = texts.slice(i, i + BATCH_SIZE);
     const res = await fetch(ENDPOINT, {
       method: 'POST',
+      signal: AbortSignal.timeout(60_000),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,

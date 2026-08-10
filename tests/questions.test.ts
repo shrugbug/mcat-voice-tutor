@@ -1,5 +1,5 @@
-import { describe, expect, test } from 'vitest';
-import { QuestionSchema, buildQuestionPrompt, type QuestionParams } from '../lib/questions';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { QuestionSchema, buildQuestionPrompt, generateQuestion, type QuestionParams } from '../lib/questions';
 
 function validQuestion(overrides: Record<string, unknown> = {}) {
   return {
@@ -121,5 +121,89 @@ describe('buildQuestionPrompt', () => {
     const prompt = buildQuestionPrompt(baseParams);
     expect(prompt).toMatch(/SPECIFIC common misconception/);
     expect(prompt).toMatch(/correct.*rationale/i);
+  });
+});
+
+describe('generateQuestion invariant enforcement', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  const requestParams: QuestionParams = {
+    categoryId: '5A',
+    categoryName: 'Unique nature of water and its solutions',
+    topics: ['Acid-Base Equilibria'],
+    difficulty: 2,
+    style: 'discrete',
+  };
+
+  function stubChatCompletion(question: Record<string, unknown>) {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    vi.stubEnv('QUESTION_MODEL', 'gpt-5.1');
+    return vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }),
+    }));
+  }
+
+  test('accepts a response whose categoryId/difficulty/style match the request', async () => {
+    const question = validQuestion({ categoryId: '5A', difficulty: 2, passage: null });
+    const fetchMock = stubChatCompletion(question);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion(requestParams)).resolves.toMatchObject({ categoryId: '5A', difficulty: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('retries once and throws when categoryId does not match the request', async () => {
+    const question = validQuestion({ categoryId: '4A', difficulty: 2, passage: null });
+    const fetchMock = stubChatCompletion(question);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion(requestParams)).rejects.toThrow(/categoryId mismatch/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('retries once and throws when difficulty does not match the request', async () => {
+    const question = validQuestion({ categoryId: '5A', difficulty: 3, passage: null });
+    const fetchMock = stubChatCompletion(question);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion(requestParams)).rejects.toThrow(/difficulty mismatch/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('retries once and throws when a discrete-style request gets a non-null passage', async () => {
+    const question = validQuestion({ categoryId: '5A', difficulty: 2, passage: 'Unexpected passage text.' });
+    const fetchMock = stubChatCompletion(question);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion(requestParams)).rejects.toThrow(/style mismatch/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('retries once and throws when a passage-style request gets a null passage', async () => {
+    const question = validQuestion({ categoryId: '5A', difficulty: 2, passage: null });
+    const fetchMock = stubChatCompletion(question);
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion({ ...requestParams, style: 'passage' })).rejects.toThrow(/style mismatch/);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  test('recovers on the second attempt if the first violates an invariant', async () => {
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    vi.stubEnv('QUESTION_MODEL', 'gpt-5.1');
+    let call = 0;
+    const fetchMock = vi.fn(async () => {
+      call += 1;
+      const question = validQuestion({ categoryId: call === 1 ? '4A' : '5A', difficulty: 2, passage: null });
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }) };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(generateQuestion(requestParams)).resolves.toMatchObject({ categoryId: '5A' });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

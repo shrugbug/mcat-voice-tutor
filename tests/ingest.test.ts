@@ -46,6 +46,12 @@ describe('writeChunks', () => {
     expect(rows()).toEqual([{ text: 'new text' }]);
   });
 
+  test('refuses to force-replace with zero chunks and leaves existing rows untouched', async () => {
+    await expect(writeChunks(db, 'bio.pdf', [], true)).rejects.toThrow(/0 chunks/);
+    expect(embed).not.toHaveBeenCalled();
+    expect(rows()).toEqual([{ text: 'existing text' }]);
+  });
+
   test('leaves other sources untouched when forcing a re-ingest', async () => {
     db.prepare('INSERT INTO chunks (source, page, text, embedding) VALUES (?, ?, ?, ?)').run(
       'chem.pdf',

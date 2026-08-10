@@ -45,6 +45,14 @@ export async function writeChunks(
   chunks: PageChunk[],
   force: boolean
 ): Promise<void> {
+  // Guard: with force=true this function deletes the source's existing rows before inserting
+  // the new ones. If extraction/chunking produced zero chunks (e.g. a corrupt PDF, a pdftotext
+  // regression, or an empty file), that delete would erase a previously valid index and replace
+  // it with nothing. Abort before the delete/embed happens at all.
+  if (force && chunks.length === 0) {
+    throw new Error(`${source}: extraction produced 0 chunks, refusing to --force-replace an existing index`);
+  }
+
   const vectors = await embed(chunks.map((c) => c.text));
   if (vectors.length !== chunks.length) {
     throw new Error(
@@ -111,6 +119,16 @@ async function main(argv: string[]): Promise<void> {
     const chunks = chunkPages(pages);
     const chars = chunks.reduce((sum, c) => sum + c.text.length, 0);
     console.log(`${source}: ${pages.length} pages, ${chunks.length} chunks, ${chars} chars`);
+
+    // Guard: with --force, writeChunks deletes the source's existing rows before inserting the
+    // new ones. If extraction/chunking produced zero chunks (e.g. a corrupt PDF, pdftotext
+    // regression, or an empty file), that delete would erase a previously valid index and
+    // replace it with nothing. Abort this file before any delete happens.
+    if (force && chunks.length === 0) {
+      console.error(`skip ${source}: extraction produced 0 chunks, refusing to --force-replace an existing index`);
+      process.exitCode = 1;
+      continue;
+    }
 
     if (!db) continue;
 

@@ -1,7 +1,15 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { RealtimeClient, handleServerEvent, type Action, type ServerEvent } from '@/lib/realtime-client';
+import {
+  RealtimeClient,
+  handleServerEvent,
+  shouldReconnect,
+  getReconnectDelay,
+  type Action,
+  type ServerEvent,
+  type ConnectionDropState,
+} from '@/lib/realtime-client';
 import type { Profile } from '@/lib/student';
 import { ViewSpecSchema, type ViewSpec } from '@/lib/views';
 import ContentPanel, { type DisplayContent } from './components/ContentPanel';
@@ -42,6 +50,38 @@ export default function Home() {
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
+  // Elapsed timer is cumulative across reconnects: cumulativeBaseRef accrues the duration of
+  // every prior connected segment, startedAt marks the current segment's start (or null while
+  // reconnecting/disconnected). Only a manual Disconnect or a fresh Connect from a fully
+  // disconnected state zeroes this out -- an automatic reconnect must not reset it.
+  const cumulativeBaseRef = useRef(0);
+
+  const [reconnecting, setReconnecting] = useState(false);
+  // True once the user has clicked Disconnect for the current client lifecycle -- shouldReconnect
+  // always returns false while this is set, per WS-B item 1 (no auto-connect/reconnect against
+  // user intent; manual Connect always wins).
+  const userDisconnectedRef = useRef(false);
+  // Number of automatic reconnect attempts made so far for the current drop. Reset to 0 on every
+  // successful (re)connect and on manual disconnect.
+  const reconnectAttemptRef = useRef(0);
+  // Guards against handling the same drop twice: connectionstatechange and the data channel's
+  // own 'close' event can both fire for a single drop.
+  const dropHandledRef = useRef(false);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearPendingReconnect = useCallback(() => {
+    if (reconnectTimeoutRef.current !== null) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+  }, []);
+
+  const pauseElapsedTimer = useCallback(() => {
+    setStartedAt((prev) => {
+      if (prev !== null) cumulativeBaseRef.current += Date.now() - prev;
+      return null;
+    });
+  }, []);
 
   const refreshSidebar = useCallback(() => {
     void callTool('get_student_profile', {}).then((res) => {
@@ -54,10 +94,12 @@ export default function Home() {
     refreshSidebar();
   }, [refreshSidebar]);
 
-  // Elapsed session timer.
+  // Elapsed session timer: cumulative across reconnects (cumulativeBaseRef + current segment).
   useEffect(() => {
     if (!connected || startedAt === null) return;
-    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 1000);
+    const tick = () => setElapsedMs(cumulativeBaseRef.current + (Date.now() - startedAt));
+    tick();
+    const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [connected, startedAt]);
 
@@ -150,27 +192,120 @@ export default function Home() {
     [resolveToolCall]
   );
 
-  const handleConnect = useCallback(async () => {
-    if (!audioRef.current || connecting || connected) return;
-    setError(null);
-    setConnecting(true);
-    try {
-      const client = new RealtimeClient(audioRef.current);
-      clientRef.current = client;
+  // Shared wiring for a freshly constructed client, used by both the initial manual connect and
+  // every automatic reconnect attempt. `onDrop` is called at most once per client for whichever
+  // signal (connectionstatechange or the data channel's own close) fires first -- handleDrop
+  // itself is idempotent via dropHandledRef, but wiring it once here keeps that logic in one place.
+  const wireClient = useCallback(
+    (client: RealtimeClient, onDrop: (state: ConnectionDropState) => void) => {
       client.onEvent((event: ServerEvent) => {
         const raw = handleServerEvent(event);
         const actions = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
         if (actions.length > 0) handleActions(actions, client);
       });
       client.onConnectionStateChange((state) => {
+        if (clientRef.current !== client) return;
         if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-          setConnected(false);
-          setStartedAt(null);
-          setElapsedMs(0);
-          if (state === 'failed') setError('Connection lost. Click Connect to reconnect.');
-          if (clientRef.current === client) clientRef.current = null;
+          onDrop(state);
         }
       });
+      client.onDataChannelClose(() => {
+        if (clientRef.current !== client) return;
+        onDrop('datachannel-closed');
+      });
+    },
+    [handleActions]
+  );
+
+  // attemptReconnect, scheduleReconnect, and handleDrop form a cycle (a failed attempt schedules
+  // the next one; a drop schedules the first one; a scheduled attempt calls back into itself on
+  // failure). Each is called only through a ref updated by an effect below, so none of the
+  // useCallback definitions needs to reference a not-yet-declared identifier.
+  const handleDropRef = useRef<(state: ConnectionDropState) => void>(() => {});
+  const scheduleReconnectRef = useRef<(attemptNumber: number) => void>(() => {});
+  const attemptReconnectRef = useRef<(attemptNumber: number) => void>(() => {});
+
+  const attemptReconnect = useCallback(
+    async (attemptNumber: number) => {
+      if (!audioRef.current || userDisconnectedRef.current) return;
+      reconnectAttemptRef.current = attemptNumber;
+      setReconnecting(true);
+      setError(null);
+      try {
+        const client = new RealtimeClient(audioRef.current);
+        wireClient(client, (state) => handleDropRef.current(state));
+        clientRef.current = client;
+        await client.connect({ resume: true });
+        if (clientRef.current !== client) return; // superseded by a manual disconnect mid-flight
+        dropHandledRef.current = false;
+        reconnectAttemptRef.current = 0;
+        setReconnecting(false);
+        setConnected(true);
+        setStartedAt(Date.now());
+      } catch {
+        if (userDisconnectedRef.current) return;
+        if (shouldReconnect('failed', false, attemptNumber)) {
+          scheduleReconnectRef.current(attemptNumber + 1);
+        } else {
+          setReconnecting(false);
+          setConnected(false);
+          clientRef.current = null;
+          setError('Connection lost. Click Connect to reconnect.');
+        }
+      }
+    },
+    [wireClient]
+  );
+  useEffect(() => {
+    attemptReconnectRef.current = (attemptNumber: number) => void attemptReconnect(attemptNumber);
+  }, [attemptReconnect]);
+
+  const scheduleReconnect = useCallback((attemptNumber: number) => {
+    setReconnecting(true);
+    const delay = getReconnectDelay(attemptNumber);
+    reconnectTimeoutRef.current = setTimeout(() => {
+      reconnectTimeoutRef.current = null;
+      attemptReconnectRef.current(attemptNumber);
+    }, delay);
+  }, []);
+  useEffect(() => {
+    scheduleReconnectRef.current = scheduleReconnect;
+  }, [scheduleReconnect]);
+
+  const handleDrop = useCallback(
+    (state: ConnectionDropState) => {
+      if (dropHandledRef.current || userDisconnectedRef.current) return;
+      dropHandledRef.current = true;
+      pauseElapsedTimer();
+      setConnected(false);
+      clientRef.current = null;
+
+      const attemptsMade = reconnectAttemptRef.current;
+      if (shouldReconnect(state, false, attemptsMade)) {
+        scheduleReconnectRef.current(attemptsMade + 1);
+      } else {
+        setReconnecting(false);
+        setError('Connection lost. Click Connect to reconnect.');
+      }
+    },
+    [pauseElapsedTimer]
+  );
+  useEffect(() => {
+    handleDropRef.current = handleDrop;
+  }, [handleDrop]);
+
+  const handleConnect = useCallback(async () => {
+    if (!audioRef.current || connecting || connected || reconnecting) return;
+    setError(null);
+    setConnecting(true);
+    userDisconnectedRef.current = false;
+    dropHandledRef.current = false;
+    reconnectAttemptRef.current = 0;
+    cumulativeBaseRef.current = 0;
+    try {
+      const client = new RealtimeClient(audioRef.current);
+      wireClient(client, (state) => handleDropRef.current(state));
+      clientRef.current = client;
       await client.connect();
       setConnected(true);
       setStartedAt(Date.now());
@@ -181,21 +316,29 @@ export default function Home() {
     } finally {
       setConnecting(false);
     }
-  }, [connected, connecting, handleActions]);
+  }, [connected, connecting, reconnecting, wireClient]);
 
   const handleDisconnect = useCallback(() => {
+    userDisconnectedRef.current = true;
+    clearPendingReconnect();
     clientRef.current?.disconnect();
     clientRef.current = null;
     setConnected(false);
+    setReconnecting(false);
+    setError(null);
     setStartedAt(null);
     setElapsedMs(0);
-  }, []);
+    cumulativeBaseRef.current = 0;
+    reconnectAttemptRef.current = 0;
+    dropHandledRef.current = false;
+  }, [clearPendingReconnect]);
 
   useEffect(() => {
     return () => {
+      clearPendingReconnect();
       clientRef.current?.disconnect();
     };
-  }, []);
+  }, [clearPendingReconnect]);
 
   return (
     <div className="app">
@@ -205,11 +348,16 @@ export default function Home() {
         <button
           type="button"
           className="connect-button"
-          onClick={connected ? handleDisconnect : handleConnect}
+          onClick={connected || reconnecting ? handleDisconnect : handleConnect}
           disabled={connecting}
         >
-          {connected ? 'Disconnect' : connecting ? 'Connecting…' : 'Connect'}
+          {connected ? 'Disconnect' : connecting ? 'Connecting…' : reconnecting ? 'Cancel' : 'Connect'}
         </button>
+        <span
+          className={`status-pill status-pill--${connected ? 'connected' : reconnecting ? 'reconnecting' : 'disconnected'}`}
+        >
+          {connected ? 'Connected' : reconnecting ? 'Reconnecting…' : 'Disconnected'}
+        </span>
         {modeBadge && <span className="mode-badge">{modeBadge}</span>}
         <span className="elapsed-timer">{formatElapsed(elapsedMs)}</span>
         {error && <span className="connect-error">{error}</span>}

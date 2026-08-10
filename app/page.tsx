@@ -55,6 +55,9 @@ export default function Home() {
   // reconnecting/disconnected). Only a manual Disconnect or a fresh Connect from a fully
   // disconnected state zeroes this out -- an automatic reconnect must not reset it.
   const cumulativeBaseRef = useRef(0);
+  // Mirrors `startedAt` for reads outside the React update cycle (pauseElapsedTimer needs the
+  // current segment start synchronously, without going through a setState updater -- see below).
+  const startedAtRef = useRef<number | null>(null);
 
   const [reconnecting, setReconnecting] = useState(false);
   // True once the user has clicked Disconnect for the current client lifecycle -- shouldReconnect
@@ -76,11 +79,13 @@ export default function Home() {
     }
   }, []);
 
+  // Reads startedAtRef.current (not the setStartedAt functional-updater form) so the accrual
+  // into cumulativeBaseRef happens exactly once even under StrictMode's double-invocation of
+  // updater functions -- an updater body would double-count elapsed time on every drop.
   const pauseElapsedTimer = useCallback(() => {
-    setStartedAt((prev) => {
-      if (prev !== null) cumulativeBaseRef.current += Date.now() - prev;
-      return null;
-    });
+    const prev = startedAtRef.current;
+    if (prev !== null) cumulativeBaseRef.current += Date.now() - prev;
+    setStartedAt(null);
   }, []);
 
   const refreshSidebar = useCallback(() => {
@@ -96,6 +101,7 @@ export default function Home() {
 
   // Elapsed session timer: cumulative across reconnects (cumulativeBaseRef + current segment).
   useEffect(() => {
+    startedAtRef.current = startedAt;
     if (!connected || startedAt === null) return;
     const tick = () => setElapsedMs(cumulativeBaseRef.current + (Date.now() - startedAt));
     tick();
@@ -199,6 +205,7 @@ export default function Home() {
   const wireClient = useCallback(
     (client: RealtimeClient, onDrop: (state: ConnectionDropState) => void) => {
       client.onEvent((event: ServerEvent) => {
+        if (clientRef.current !== client) return; // late message from a superseded/dying client
         const raw = handleServerEvent(event);
         const actions = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
         if (actions.length > 0) handleActions(actions, client);
@@ -231,8 +238,9 @@ export default function Home() {
       reconnectAttemptRef.current = attemptNumber;
       setReconnecting(true);
       setError(null);
+      let client: RealtimeClient | undefined;
       try {
-        const client = new RealtimeClient(audioRef.current);
+        client = new RealtimeClient(audioRef.current);
         wireClient(client, (state) => handleDropRef.current(state));
         clientRef.current = client;
         await client.connect({ resume: true });
@@ -249,6 +257,9 @@ export default function Home() {
         } else {
           setReconnecting(false);
           setConnected(false);
+          // Symmetric with handleConnect's error path: tear down the failed client (stop the mic,
+          // close whatever partially opened) rather than only dropping the ref and leaking it.
+          client?.disconnect();
           clientRef.current = null;
           setError('Connection lost. Click Connect to reconnect.');
         }

@@ -180,6 +180,29 @@ a {
   margin-bottom: 0.75rem;
 }
 
+/* Sanitized passage/show_content tables render as bare text without this —
+   match the data_table look so tabular passage data reads as a table. */
+.content-panel__body table,
+.passage-view table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.content-panel__body th,
+.content-panel__body td,
+.passage-view th,
+.passage-view td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(128, 128, 128, 0.3);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.content-panel__body th,
+.passage-view th {
+  background: rgba(128, 128, 128, 0.12);
+}
+
 .content-panel__body pre {
   overflow-x: auto;
   white-space: pre-wrap;
@@ -356,6 +379,23 @@ a {
 
 .data-table-view__scroll {
   overflow-x: auto;
+  /* Overlay scrollbars (macOS/iOS) hide by default, making overflowing columns
+     look clipped with no affordance — force a visible, thin scrollbar. */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(128, 128, 128, 0.55) rgba(128, 128, 128, 0.12);
+}
+
+.data-table-view__scroll::-webkit-scrollbar {
+  height: 8px;
+}
+
+.data-table-view__scroll::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.55);
+  border-radius: 4px;
+}
+
+.data-table-view__scroll::-webkit-scrollbar-track {
+  background: rgba(128, 128, 128, 0.12);
 }
 
 .data-table-view__table {
@@ -369,6 +409,9 @@ a {
   border: 1px solid rgba(128, 128, 128, 0.3);
   text-align: left;
   vertical-align: top;
+  /* Wrap long unbroken content so ordinary tables fit their container;
+     genuinely wide many-column tables still scroll via the wrapper. */
+  overflow-wrap: anywhere;
 }
 
 .data-table-view__table th {

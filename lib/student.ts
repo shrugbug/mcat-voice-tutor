@@ -1,4 +1,5 @@
 import type { DB } from './db';
+import { toBlob } from './rag';
 
 export type Taxonomy = {
   sections: {
@@ -21,6 +22,8 @@ export type Profile = {
   categories: CategoryProfile[];
   lastSession: { mode: string; summary: string; focusNext: string } | null;
   weakest: string[];
+  due: string[];
+  recentMisconceptions: { categoryId: string; misconception: string; ts: string }[];
 };
 
 export type RecordResultInput = {
@@ -36,6 +39,18 @@ export type SessionSummaryInput = {
   mode: string;
   summary: string;
   focusNext: string;
+};
+
+export type RecordEpisodeInput = {
+  categoryId: string;
+  stem: string;
+  options: [string, string, string, string];
+  correctIndex: number;
+  chosenIndex: number;
+  errorType?: string;
+  misconception?: string;
+  studentReasoning?: string;
+  embedding?: Float32Array;
 };
 
 const MASTERY_MIN = 0.02;
@@ -118,17 +133,62 @@ export function getProfile(db: DB): Profile {
     .slice(0, 5)
     .map((c) => c.id);
 
+  const recentMisconceptions = db
+    .prepare(
+      `SELECT category_id as categoryId, misconception, ts
+       FROM episodes
+       WHERE misconception IS NOT NULL
+       ORDER BY datetime(ts) DESC, id DESC
+       LIMIT 10`
+    )
+    .all() as { categoryId: string; misconception: string; ts: string }[];
+
   return {
     categories,
     lastSession: lastSessionRow ?? null,
     weakest,
+    due: getDueCategories(db),
+    recentMisconceptions,
   };
+}
+
+export function getDueCategories(db: DB, limit = 5): string[] {
+  const now = new Date().toISOString();
+  const rows = db
+    .prepare(
+      `SELECT id
+       FROM categories
+       WHERE due_at IS NULL OR datetime(due_at) <= datetime(?)
+       ORDER BY mastery ASC
+       LIMIT ?`
+    )
+    .all(now, limit) as { id: string }[];
+  return rows.map(({ id }) => id);
+}
+
+export function recordEpisode(db: DB, episode: RecordEpisodeInput): void {
+  db.prepare(
+    `INSERT INTO episodes
+     (category_id, stem, options_json, correct_index, chosen_index, error_type,
+      misconception, student_reasoning, embedding)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    episode.categoryId,
+    episode.stem,
+    JSON.stringify(episode.options),
+    episode.correctIndex,
+    episode.chosenIndex,
+    episode.errorType ?? null,
+    episode.misconception ?? null,
+    episode.studentReasoning ?? null,
+    episode.embedding ? toBlob(episode.embedding) : null
+  );
 }
 
 export function recordResult(db: DB, r: RecordResultInput): void {
   const existing = db
-    .prepare(`SELECT mastery, attempts FROM categories WHERE id = ?`)
-    .get(r.categoryId) as { mastery: number; attempts: number } | undefined;
+    .prepare(`SELECT mastery, attempts, interval_days as intervalDays FROM categories WHERE id = ?`)
+    .get(r.categoryId) as { mastery: number; attempts: number; intervalDays: number } | undefined;
 
   if (!existing) {
     throw new Error(`Unknown categoryId: ${r.categoryId}`);
@@ -138,6 +198,8 @@ export function recordResult(db: DB, r: RecordResultInput): void {
     ? 0.5 + r.difficulty / 6
     : (1 - r.difficulty / 6) * 0.3;
   const nextMastery = clampMastery(0.75 * existing.mastery + 0.25 * outcome);
+  const nextIntervalDays = r.correct ? Math.min(existing.intervalDays * 2, 8) : 1;
+  const dueAt = new Date(Date.now() + nextIntervalDays * 24 * 60 * 60 * 1000).toISOString();
 
   const record = db.transaction(() => {
     db.prepare(
@@ -146,8 +208,10 @@ export function recordResult(db: DB, r: RecordResultInput): void {
     ).run(r.categoryId, r.difficulty, r.correct ? 1 : 0, r.errorType ?? null, r.mode, r.note ?? null);
 
     db.prepare(
-      `UPDATE categories SET mastery = ?, attempts = attempts + 1 WHERE id = ?`
-    ).run(nextMastery, r.categoryId);
+      `UPDATE categories
+       SET mastery = ?, attempts = attempts + 1, interval_days = ?, due_at = ?
+       WHERE id = ?`
+    ).run(nextMastery, nextIntervalDays, dueAt, r.categoryId);
   });
   record();
 }

@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { openDb } from '../lib/db';
 import {
   seedTaxonomy,
   seedSectionScores,
   getProfile,
+  getDueCategories,
+  recordEpisode,
   recordResult,
   writeSessionSummary,
   type Taxonomy,
@@ -29,6 +31,10 @@ describe('student model', () => {
 
   beforeEach(() => {
     db = openDb(':memory:');
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   test('seed then getProfile returns all categories with seeded mastery', () => {
@@ -145,5 +151,120 @@ describe('student model', () => {
     expect(() =>
       recordResult(db, { categoryId: 'nope', difficulty: 1, correct: true, mode: 'drill' })
     ).toThrow();
+  });
+
+  test('recordResult doubles a correct category interval and schedules its next due date', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'));
+    seedTaxonomy(db, tax);
+
+    recordResult(db, { categoryId: '4A', difficulty: 2, correct: true, mode: 'drill' });
+
+    expect(
+      db.prepare('SELECT interval_days as intervalDays, due_at as dueAt FROM categories WHERE id = ?').get('4A')
+    ).toEqual({ intervalDays: 2, dueAt: '2026-08-12T12:00:00.000Z' });
+  });
+
+  test('recordResult resets a wrong category interval to one day', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'));
+    seedTaxonomy(db, tax);
+    db.prepare('UPDATE categories SET interval_days = 8 WHERE id = ?').run('4A');
+
+    recordResult(db, { categoryId: '4A', difficulty: 2, correct: false, mode: 'drill' });
+
+    expect(
+      db.prepare('SELECT interval_days as intervalDays, due_at as dueAt FROM categories WHERE id = ?').get('4A')
+    ).toEqual({ intervalDays: 1, dueAt: '2026-08-11T12:00:00.000Z' });
+  });
+
+  test('recordResult caps a correct category interval at eight days', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'));
+    seedTaxonomy(db, tax);
+    db.prepare('UPDATE categories SET interval_days = 8 WHERE id = ?').run('4A');
+
+    recordResult(db, { categoryId: '4A', difficulty: 3, correct: true, mode: 'drill' });
+
+    expect(
+      db.prepare('SELECT interval_days as intervalDays, due_at as dueAt FROM categories WHERE id = ?').get('4A')
+    ).toEqual({ intervalDays: 8, dueAt: '2026-08-18T12:00:00.000Z' });
+  });
+
+  test('getDueCategories excludes future reviews and orders due categories by lowest mastery', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'));
+    seedTaxonomy(db, tax);
+    db.prepare("UPDATE categories SET mastery = 0.4, due_at = NULL WHERE id = '4A'").run();
+    db.prepare("UPDATE categories SET mastery = 0.2, due_at = '2026-08-09T12:00:00.000Z' WHERE id = '4B'").run();
+    db.prepare("UPDATE categories SET mastery = 0.1, due_at = '2026-08-11T12:00:00.000Z' WHERE id = '5A'").run();
+
+    expect(getDueCategories(db)).toEqual(['4B', '4A']);
+    expect(getDueCategories(db, 1)).toEqual(['4B']);
+  });
+
+  test('recordEpisode stores every supplied field including a precomputed embedding', () => {
+    seedTaxonomy(db, tax);
+    const embedding = new Float32Array([0.25, 0.75]);
+
+    recordEpisode(db, {
+      categoryId: '4A',
+      stem: 'Which graph has constant acceleration?',
+      options: ['A', 'B', 'C', 'D'],
+      correctIndex: 2,
+      chosenIndex: 1,
+      errorType: 'reasoning',
+      misconception: 'Velocity and acceleration were conflated',
+      studentReasoning: 'A straight line meant no acceleration',
+      embedding,
+    });
+
+    const row = db.prepare(
+      `SELECT category_id as categoryId, stem, options_json as optionsJson,
+              correct_index as correctIndex, chosen_index as chosenIndex,
+              error_type as errorType, misconception,
+              student_reasoning as studentReasoning, embedding
+       FROM episodes`
+    ).get() as Record<string, unknown>;
+    expect({ ...row, embedding: Array.from(new Float32Array((row.embedding as Buffer).buffer, (row.embedding as Buffer).byteOffset, 2)) }).toEqual({
+      categoryId: '4A',
+      stem: 'Which graph has constant acceleration?',
+      optionsJson: '["A","B","C","D"]',
+      correctIndex: 2,
+      chosenIndex: 1,
+      errorType: 'reasoning',
+      misconception: 'Velocity and acceleration were conflated',
+      studentReasoning: 'A straight line meant no acceleration',
+      embedding: [0.25, 0.75],
+    });
+  });
+
+  test('getProfile includes due IDs and only the ten most recent non-null misconceptions', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-10T12:00:00.000Z'));
+    seedTaxonomy(db, tax);
+    db.prepare("UPDATE categories SET mastery = 0.2, due_at = NULL WHERE id = '4B'").run();
+    db.prepare("UPDATE categories SET mastery = 0.4, due_at = NULL WHERE id = '4A'").run();
+    db.prepare("UPDATE categories SET mastery = 0.1, due_at = '2026-08-11T12:00:00.000Z' WHERE id = '5A'").run();
+    const insert = db.prepare(
+      `INSERT INTO episodes
+       (ts, category_id, stem, options_json, correct_index, chosen_index, misconception)
+       VALUES (?, ?, ?, '[]', 0, 1, ?)`
+    );
+    for (let day = 1; day <= 11; day++) {
+      insert.run(`2026-07-${String(day).padStart(2, '0')}T12:00:00.000Z`, '4A', `Stem ${day}`, `Misconception ${day}`);
+    }
+    insert.run('2026-08-01T12:00:00.000Z', '4B', 'No misconception', null);
+
+    const profile = getProfile(db);
+
+    expect(profile.due).toEqual(['4B', '4A']);
+    expect(profile.recentMisconceptions).toHaveLength(10);
+    expect(profile.recentMisconceptions[0]).toEqual({
+      categoryId: '4A',
+      misconception: 'Misconception 11',
+      ts: '2026-07-11T12:00:00.000Z',
+    });
+    expect(profile.recentMisconceptions.at(-1)?.misconception).toBe('Misconception 2');
   });
 });

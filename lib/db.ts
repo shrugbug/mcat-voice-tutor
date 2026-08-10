@@ -26,6 +26,9 @@ export function openDb(path: string = DEFAULT_DB_PATH) {
       category_id TEXT NOT NULL, stem TEXT NOT NULL, options_json TEXT NOT NULL,
       correct_index INT NOT NULL, chosen_index INT NOT NULL, error_type TEXT,
       misconception TEXT, student_reasoning TEXT, embedding BLOB NULL);
+    CREATE TABLE IF NOT EXISTS transcripts(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      role TEXT NOT NULL CHECK(role IN ('user','bot','system')), text TEXT NOT NULL);
   `);
 
   const categoryColumns = db.pragma('table_info(categories)') as { name: string }[];

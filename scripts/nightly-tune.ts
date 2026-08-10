@@ -23,11 +23,20 @@ export type EpisodeRow = {
   misconception: string | null;
 };
 
+export type TranscriptRow = {
+  role: 'user' | 'bot' | 'system';
+  text: string;
+};
+
+const MAX_TRANSCRIPT_LINES = 400;
+
 export type TuningData = {
   date: string;
   results: ResultRow[];
   /** null when WS-A's episodes table doesn't exist yet in this db. */
   episodes: EpisodeRow[] | null;
+  /** null when the transcripts table doesn't exist yet in this db. */
+  transcript: TranscriptRow[] | null;
 };
 
 function hasTable(db: DB, table: string): boolean {
@@ -63,7 +72,20 @@ export function gatherTuningData(db: DB): TuningData {
         .all() as EpisodeRow[])
     : null;
 
-  return { date: today, results, episodes };
+  const transcript = hasTable(db, 'transcripts')
+    ? (db
+        .prepare(
+          `SELECT role, text FROM (
+             SELECT id, role, text FROM transcripts
+             WHERE date(ts) = date('now')
+             ORDER BY id DESC
+             LIMIT ?
+           ) ORDER BY id ASC`
+        )
+        .all(MAX_TRANSCRIPT_LINES) as TranscriptRow[])
+    : null;
+
+  return { date: today, results, episodes, transcript };
 }
 
 /**
@@ -99,6 +121,8 @@ export function buildTuningPrompt(data: TuningData): string {
     .filter((e) => e.misconception)
     .map((e) => `- ${e.categoryId} (${e.errorType ?? 'unknown error type'}): ${e.misconception}`);
 
+  const dialogueLines = (data.transcript ?? []).map((line) => `${line.role}: ${line.text}`);
+
   const sections = [
     'You are tuning the examiner instructions for an MCAT voice-study-bot based on today\'s real study data.',
     'Analyze the data below and propose SPECIFIC, ACTIONABLE tuning changes to the examiner instructions. Consider:',
@@ -106,6 +130,7 @@ export function buildTuningPrompt(data: TuningData): string {
     '- Are there error_type misdiagnosis patterns (e.g. reasoning errors mislabeled as content errors)?',
     '- Is session pacing (attempts per session, time per question) a concern?',
     '- Do recorded misconceptions suggest the examiner should ground certain categories differently?',
+    '- Read the DIALOGUE section below and critique examiner behavior directly: is it interrupting too much, over-explaining, letting imprecise answers slide instead of pressing for rigor, or mismanaging pacing?',
     'Ground every proposal in the data provided. Do not invent data not shown below. If data is too sparse to support a proposal, say so explicitly rather than guessing.',
     '',
     `Date: ${data.date}`,
@@ -123,6 +148,13 @@ export function buildTuningPrompt(data: TuningData): string {
       : misconceptionLines.length > 0
         ? misconceptionLines.join('\n')
         : '(none recorded today)',
+    '',
+    'DIALOGUE (role-prefixed lines from today\'s session transcripts — use this to judge examiner conversational behavior, not just outcomes):',
+    data.transcript === null
+      ? '(transcript not available yet — transcripts table not present)'
+      : dialogueLines.length > 0
+        ? dialogueLines.join('\n')
+        : '(no transcript recorded today)',
     '',
     'Output format: a markdown list of numbered proposals, each with a one-line rationale citing the specific data point that motivated it. Do NOT rewrite the instructions yourself — only propose changes for a human to apply.',
   ];

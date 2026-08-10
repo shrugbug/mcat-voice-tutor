@@ -109,3 +109,32 @@ describe('WS-A database schema', () => {
     migratedDb.close();
   });
 });
+
+describe('transcripts table', () => {
+  test('round-trips role and text', () => {
+    const db = openDb(':memory:');
+
+    db.prepare(`INSERT INTO transcripts (role, text) VALUES (?, ?)`).run('user', 'What is impulse?');
+    db.prepare(`INSERT INTO transcripts (role, text) VALUES (?, ?)`).run('bot', 'Impulse is force times time.');
+    db.prepare(`INSERT INTO transcripts (role, text) VALUES (?, ?)`).run('system', '[photo sent]');
+
+    const rows = db.prepare(`SELECT role, text FROM transcripts ORDER BY id ASC`).all();
+    expect(rows).toEqual([
+      { role: 'user', text: 'What is impulse?' },
+      { role: 'bot', text: 'Impulse is force times time.' },
+      { role: 'system', text: '[photo sent]' },
+    ]);
+
+    db.close();
+  });
+
+  test('rejects a role outside user/bot/system via the CHECK constraint', () => {
+    const db = openDb(':memory:');
+
+    expect(() =>
+      db.prepare(`INSERT INTO transcripts (role, text) VALUES (?, ?)`).run('narrator', 'not allowed')
+    ).toThrow();
+
+    db.close();
+  });
+});

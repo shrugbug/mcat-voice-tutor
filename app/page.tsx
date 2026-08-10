@@ -21,6 +21,12 @@ type TranscriptLine = { speaker: 'user' | 'bot'; text: string };
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_IMAGE_EDGE = 1536;
 const IMAGE_JPEG_QUALITY = 0.85;
+// Transcript persistence: buffered client-side and flushed to /api/transcript in batches so the
+// nightly tuner can read real dialogue. Never allowed to disturb the live session -- see
+// flushTranscriptBuffer below.
+const TRANSCRIPT_FLUSH_THRESHOLD = 20;
+const TRANSCRIPT_FLUSH_INTERVAL_MS = 8000;
+const MAX_BUFFERED_TRANSCRIPT_LINES = 500;
 const QUESTION_PHOTO_NOTE =
   'Photo of a practice question I want to review. Read it, then quiz me on it.';
 
@@ -234,6 +240,50 @@ export default function Home() {
     return () => clearInterval(id);
   }, [connected, startedAt]);
 
+  // Buffers transcript lines client-side so they can be persisted to /api/transcript in batches
+  // for the nightly tuner. Flushed at TRANSCRIPT_FLUSH_THRESHOLD lines, on an interval while
+  // connected, and on disconnect / reconnect give-up. Fire-and-forget: a failed flush re-queues
+  // its batch at the front of the buffer (oldest lines dropped first once over the cap) rather
+  // than surfacing an error, since persistence must never disturb the study session.
+  const transcriptBufferRef = useRef<{ role: 'user' | 'bot' | 'system'; text: string }[]>([]);
+
+  const flushTranscriptBuffer = useCallback(() => {
+    if (transcriptBufferRef.current.length === 0) return;
+    const batch = transcriptBufferRef.current;
+    transcriptBufferRef.current = [];
+    fetch('/api/transcript', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ lines: batch }),
+    })
+      .then(async (res) => {
+        const body = (await res.json()) as { ok?: boolean; error?: string };
+        if (!body.ok) throw new Error(body.error ?? 'transcript flush did not report ok');
+      })
+      .catch((err) => {
+        console.warn('transcript flush failed; re-queueing', err);
+        // batch (older) first, then whatever buffered while the request was in flight (newer);
+        // cap by keeping the newest MAX_BUFFERED_TRANSCRIPT_LINES, dropping the oldest overflow.
+        transcriptBufferRef.current = [...batch, ...transcriptBufferRef.current].slice(
+          -MAX_BUFFERED_TRANSCRIPT_LINES
+        );
+      });
+  }, []);
+
+  const pushTranscriptEntry = useCallback(
+    (role: 'user' | 'bot' | 'system', text: string) => {
+      transcriptBufferRef.current.push({ role, text });
+      if (transcriptBufferRef.current.length >= TRANSCRIPT_FLUSH_THRESHOLD) flushTranscriptBuffer();
+    },
+    [flushTranscriptBuffer]
+  );
+
+  useEffect(() => {
+    if (!connected) return;
+    const id = setInterval(flushTranscriptBuffer, TRANSCRIPT_FLUSH_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [connected, flushTranscriptBuffer]);
+
   // Resolve one tool_call action to its function_call_output payload. Never throws: every
   // failure path (fetch rejection, malformed args, dispatcher {error}) resolves to an
   // {error} payload so the batch below can always send a function_call_output for every
@@ -309,9 +359,11 @@ export default function Home() {
       for (const action of others) {
         if (action.kind === 'user_transcript') {
           setTranscript((t) => [...t, { speaker: 'user', text: action.text }]);
+          pushTranscriptEntry('user', action.text);
         } else if (action.kind === 'bot_transcript') {
           setTranscript((t) => [...t, { speaker: 'bot', text: action.text }]);
           setModeBadge((m) => m ?? action.text.slice(0, 80));
+          pushTranscriptEntry('bot', action.text);
         }
       }
 
@@ -331,7 +383,7 @@ export default function Home() {
           toolBatchInFlightRef.current = false;
         });
     },
-    [resolveToolCall]
+    [resolveToolCall, pushTranscriptEntry]
   );
 
   // Shared wiring for a freshly constructed client, used by both the initial manual connect and
@@ -398,10 +450,11 @@ export default function Home() {
           client?.disconnect();
           clientRef.current = null;
           setError('Connection lost. Click Connect to reconnect.');
+          flushTranscriptBuffer();
         }
       }
     },
-    [wireClient]
+    [wireClient, flushTranscriptBuffer]
   );
   useEffect(() => {
     attemptReconnectRef.current = (attemptNumber: number) => void attemptReconnect(attemptNumber);
@@ -433,9 +486,10 @@ export default function Home() {
       } else {
         setReconnecting(false);
         setError('Connection lost. Click Connect to reconnect.');
+        flushTranscriptBuffer();
       }
     },
-    [pauseElapsedTimer]
+    [pauseElapsedTimer, flushTranscriptBuffer]
   );
   useEffect(() => {
     handleDropRef.current = handleDrop;
@@ -478,7 +532,8 @@ export default function Home() {
     cumulativeBaseRef.current = 0;
     reconnectAttemptRef.current = 0;
     dropHandledRef.current = false;
-  }, [clearPendingReconnect]);
+    flushTranscriptBuffer();
+  }, [clearPendingReconnect, flushTranscriptBuffer]);
 
   const sendQuestionPhoto = useCallback(
     async (file: File) => {
@@ -506,11 +561,12 @@ export default function Home() {
         }
         client.sendImage(dataUrl, QUESTION_PHOTO_NOTE);
         setTranscript((lines) => [...lines, { speaker: 'user', text: '[photo sent]' }]);
+        pushTranscriptEntry('system', '[photo sent]');
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Could not send the question photo.');
       }
     },
-    [connected]
+    [connected, pushTranscriptEntry]
   );
 
   const handleFileSelect = useCallback(
@@ -542,8 +598,9 @@ export default function Home() {
     return () => {
       clearPendingReconnect();
       clientRef.current?.disconnect();
+      flushTranscriptBuffer();
     };
-  }, [clearPendingReconnect]);
+  }, [clearPendingReconnect, flushTranscriptBuffer]);
 
   const showLanding = !connected && !connecting && !reconnecting;
 

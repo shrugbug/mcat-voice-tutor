@@ -199,7 +199,7 @@ export default function Home() {
 
       <footer className="transcript-strip">
         {transcript.length === 0 && <p className="transcript-strip__empty">Transcript will appear here.</p>}
-        {transcript.map((line, i) => (
+        {[...transcript].reverse().map((line, i) => (
           <p key={i} className={`transcript-line transcript-line--${line.speaker}`}>
             <strong>{line.speaker === 'user' ? 'You' : 'Examiner'}:</strong> {line.text}
           </p>

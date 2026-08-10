@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { openDb } from '@/lib/db';
 import { dispatchTool } from '@/lib/tools';
 
+export const dynamic = 'force-dynamic';
+
 const requestSchema = z.strictObject({
   name: z.string(),
   args: z.unknown(),

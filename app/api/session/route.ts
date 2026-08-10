@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { EXAMINER_INSTRUCTIONS } from '@/lib/instructions';
 import { TOOL_DEFS } from '@/lib/tools';
 
+export const dynamic = 'force-dynamic';
+
 const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
 
 const clientSecretSchema = z.object({

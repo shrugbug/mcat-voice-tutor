@@ -52,3 +52,5 @@ pdfs/
 .env
 resources/
 .superpowers/
+docs/briefings/
+docs/tuning/

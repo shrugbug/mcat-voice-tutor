@@ -46,4 +46,5 @@ session/event handling.
 
 ### 2026-08-10 (part 2)
 - Completed: dogfooded full UI (fixed table overflow affordance + passage tables + app title; /debug/views harness); transcript + UI/UX-feedback capture feeding nightly tuner; deployed to VPS (mcat.illinihunt.org, basic auth, rotated); domain shortlist checked (mcat.coach chosen, user checkout pending); OSS-voice research (verdict: keep Realtime API); skills library unhobbled (37 trimmed, 8 flagged); multi-user launch spec suite + pricing on feature/multi-user-launch.
+- Completed (later): isolated public demo at mcatdemo.illinihunt.org (own db/auth/rate-zone, hostname-based generic greeting).
 - Next: user buys mcat.coach then DNS+cert; Aryan's section scores -> scored seed; review feature/multi-user-launch specs (licensing blocker: KA-derived corpus is CC BY-NC) and open PR when ready; 8 skill-audit flags; apply first docs/tuning proposal.

@@ -2,8 +2,8 @@ import { z } from 'zod';
 import type { DB } from './db';
 import { embed } from './embeddings';
 import { generateQuestion, QuestionSchema } from './questions';
-import { searchMaterials } from './rag';
-import { getProfile, recordResult, writeSessionSummary } from './student';
+import { cosine, fromBlob, searchMaterials } from './rag';
+import { getProfile, recordEpisode, recordResult, writeSessionSummary } from './student';
 import { VIEW_COMPONENT_NAMES } from './views';
 
 const recordResultArgsSchema = z.strictObject({
@@ -13,6 +13,22 @@ const recordResultArgsSchema = z.strictObject({
   errorType: z.enum(['content', 'reasoning', 'misread']).optional(),
   mode: z.string(),
   note: z.string().optional(),
+});
+
+const recordEpisodeArgsSchema = z.strictObject({
+  categoryId: z.string(),
+  stem: z.string(),
+  options: z.tuple([z.string(), z.string(), z.string(), z.string()]),
+  correctIndex: z.number().int().min(0).max(3),
+  chosenIndex: z.number().int().min(0).max(3),
+  errorType: z.string().optional(),
+  misconception: z.string().optional(),
+  studentReasoning: z.string().optional(),
+});
+
+const recallSimilarMistakesArgsSchema = z.strictObject({
+  query: z.string(),
+  k: z.number().int().positive().max(5).optional(),
 });
 
 const generateQuestionArgsSchema = z.strictObject({
@@ -66,6 +82,63 @@ export const TOOL_DEFS = [
         note: { type: 'string', description: 'Optional concise note about the result.' },
       },
       required: ['categoryId', 'difficulty', 'correct', 'mode'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'record_episode',
+    description:
+      'Use after every missed question, alongside record_result, to save the question and diagnosed misconception for later recall.',
+    parameters: {
+      type: 'object',
+      properties: {
+        categoryId: { type: 'string', description: 'The tested MCAT category ID.' },
+        stem: { type: 'string', description: 'The complete question stem.' },
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 4,
+          maxItems: 4,
+          description: 'The four answer options in display order.',
+        },
+        correctIndex: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 3,
+          description: 'Zero-based index of the correct option.',
+        },
+        chosenIndex: {
+          type: 'integer',
+          minimum: 0,
+          maximum: 3,
+          description: 'Zero-based index of the option the student chose.',
+        },
+        errorType: { type: 'string', description: 'Optional diagnosed error type.' },
+        misconception: { type: 'string', description: 'Optional concise misconception diagnosis.' },
+        studentReasoning: { type: 'string', description: 'Optional summary of the student reasoning.' },
+      },
+      required: ['categoryId', 'stem', 'options', 'correctIndex', 'chosenIndex'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'recall_similar_mistakes',
+    description:
+      'Use when opening a topic to recall the student\'s most semantically similar prior mistakes.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'The topic or concept to compare with prior mistakes.' },
+        k: {
+          type: 'integer',
+          minimum: 1,
+          maximum: 5,
+          description: 'Optional number of similar mistakes to return, up to five.',
+        },
+      },
+      required: ['query'],
       additionalProperties: false,
     },
   },
@@ -163,6 +236,38 @@ export const TOOL_DEFS = [
   },
 ] as const;
 
+export type SimilarMistake = {
+  stem: string;
+  misconception: string | null;
+  errorType: string | null;
+  ts: string;
+  categoryId: string;
+};
+
+export function recallSimilarMistakes(
+  db: DB,
+  queryEmbedding: Float32Array,
+  k = 5
+): SimilarMistake[] {
+  const rows = db
+    .prepare(
+      `SELECT stem, misconception, error_type as errorType, ts,
+              category_id as categoryId, embedding
+       FROM episodes
+       WHERE embedding IS NOT NULL`
+    )
+    .all() as (SimilarMistake & { embedding: Buffer })[];
+
+  return rows
+    .map(({ embedding, ...episode }) => ({
+      episode,
+      score: cosine(queryEmbedding, fromBlob(embedding)),
+    }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k)
+    .map(({ episode }) => episode);
+}
+
 export async function dispatchTool(db: DB, name: string, args: unknown): Promise<unknown> {
   switch (name) {
     case 'get_student_profile':
@@ -173,6 +278,20 @@ export async function dispatchTool(db: DB, name: string, args: unknown): Promise
       recordResult(db, result);
       const category = getProfile(db).categories.find(({ id }) => id === result.categoryId);
       return { ok: true, newMastery: category!.mastery };
+    }
+
+    case 'record_episode': {
+      const episode = recordEpisodeArgsSchema.parse(args);
+      const embeddingText = [episode.stem, episode.misconception].filter(Boolean).join('\n\n');
+      const [embedding] = await embed([embeddingText]);
+      recordEpisode(db, { ...episode, embedding });
+      return { ok: true };
+    }
+
+    case 'recall_similar_mistakes': {
+      const { query, k } = recallSimilarMistakesArgsSchema.parse(args);
+      const [queryEmbedding] = await embed([query]);
+      return recallSimilarMistakes(db, queryEmbedding, k);
     }
 
     case 'generate_question': {

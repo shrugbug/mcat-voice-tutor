@@ -1,6 +1,8 @@
 import Database from 'better-sqlite3';
 
-export function openDb(path = 'data/mcat.db') {
+export const DEFAULT_DB_PATH = process.env.MCAT_DB ?? 'data/mcat.db';
+
+export function openDb(path: string = DEFAULT_DB_PATH) {
   const db = new Database(path);
   db.pragma('journal_mode = WAL');
   db.exec(`

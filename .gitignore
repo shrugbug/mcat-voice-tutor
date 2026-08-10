@@ -43,6 +43,11 @@ next-env.d.ts
 
 # mcat study bot
 data/mcat.db
+data/mcat.db-wal
+data/mcat.db-shm
+data/acceptance.db
+data/acceptance.db-wal
+data/acceptance.db-shm
 pdfs/
 .env
 resources/

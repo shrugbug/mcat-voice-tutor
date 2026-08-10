@@ -2,7 +2,15 @@
  * End-to-end acceptance script: drives /api/tool through a realistic study-session
  * sequence against a running dev server and asserts the contract the voice bot relies on.
  *
- * Usage: npm run acceptance   (requires `npm run dev` already running on :3000)
+ * Usage: MCAT_DB=data/acceptance.db npm run dev   (in one terminal)
+ *        MCAT_DB=data/acceptance.db npm run seed -- --taxonomy-only   (fresh seed, once)
+ *        npm run acceptance   (in another terminal; requires the dev server above)
+ *
+ * IMPORTANT: this script writes real results/session rows. The dev server MUST be started
+ * with MCAT_DB pointing at a disposable acceptance database (e.g. data/acceptance.db), never
+ * at the real student database (data/mcat.db). This script cannot control which db the server
+ * has open (that's a server-process env var), so it defends itself by refusing to run against
+ * a profile that already shows non-trivial history — see the guard below.
  */
 import { QuestionSchema, type Question } from '../lib/questions';
 
@@ -44,6 +52,36 @@ function findCategory(profile: Profile, categoryId: string) {
   return category!;
 }
 
+/**
+ * Best-effort guard against running against the real student db: if the server's profile
+ * already shows a prior "Acceptance run" session summary (this script's own fingerprint) or
+ * a suspiciously large attempt count, warn loudly. It cannot be a hard stop for every case
+ * (a fresh acceptance.db legitimately has zero history), but it catches the common mistake of
+ * forgetting to set MCAT_DB before starting the dev server.
+ */
+function warnIfLooksLikeRealDb(profile: Profile): void {
+  const totalAttempts = profile.categories.reduce((sum, c) => sum + c.attempts, 0);
+  const looksContaminatedAlready = profile.lastSession?.summary.startsWith('Acceptance run drilled');
+  const looksLikeRealHistory = totalAttempts > 20;
+
+  if (looksContaminatedAlready || looksLikeRealHistory) {
+    console.error(
+      '\n' +
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n' +
+        '! WARNING: this server does not look like a fresh acceptance database.        !\n' +
+        `! total category attempts = ${totalAttempts}, lastSession.summary = ${JSON.stringify(
+          profile.lastSession?.summary ?? null
+        )}\n` +
+        '! Make sure the dev server was started with MCAT_DB=data/acceptance.db.       !\n' +
+        '! Refusing to run against what may be the real student database (data/mcat.db).!\n' +
+        '!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n'
+    );
+    throw new AssertionError(
+      'refusing to run: server profile shows evidence of prior acceptance/real history — set MCAT_DB=data/acceptance.db and reseed'
+    );
+  }
+}
+
 async function main(): Promise<void> {
   const MODE = 'drill';
 
@@ -51,6 +89,7 @@ async function main(): Promise<void> {
   const profile1 = (await callTool('get_student_profile', {})) as Profile;
   assert(profile1.categories.length > 0, 'profile has no categories — run `npm run seed` first');
   assert(profile1.weakest.length > 0, 'profile.weakest is empty');
+  warnIfLooksLikeRealDb(profile1);
 
   const categoryId = profile1.weakest[0];
   const before = findCategory(profile1, categoryId);

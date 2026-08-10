@@ -183,12 +183,18 @@ export default function Home() {
   // mismatch), then get corrected to the real client clock in the effect below.
   const [greetingWord, setGreetingWord] = useState<'morning' | 'afternoon' | 'evening'>('morning');
   const [todayIso, setTodayIso] = useState(SCANTRON_START_DATE);
+  // The demo instance shares this build with Aryan's instance, so personalization
+  // switches on hostname at runtime (build-time env can't differ between them).
+  const [isDemo, setIsDemo] = useState(false);
   useEffect(() => {
     const now = new Date();
     const hour = now.getHours();
     setGreetingWord(hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening');
     setTodayIso(toLocalIsoDate(now));
+    setIsDemo(window.location.hostname.startsWith('mcatdemo'));
   }, []);
+  const studentName = isDemo ? 'future doctor' : STUDENT_NAME;
+  const fileLabel = isDemo ? 'DEMO' : STUDENT_FILE_LABEL;
 
   const [reconnecting, setReconnecting] = useState(false);
   // True once the user has clicked Disconnect for the current client lifecycle -- shouldReconnect
@@ -622,11 +628,11 @@ export default function Home() {
           <div className="landing__inner">
             <div className="landing__eyebrow">
               <span>MCAT ORAL EXAMINER</span>
-              <span>FILE · {STUDENT_FILE_LABEL}</span>
+              <span>FILE · {fileLabel}</span>
             </div>
 
             <h1 className="landing__greeting">
-              Good {greetingWord}, {STUDENT_NAME}.
+              Good {greetingWord}, {studentName}.
             </h1>
 
             <p className="landing__status">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import {
   RealtimeClient,
   handleServerEvent,
@@ -10,12 +10,58 @@ import {
   type ServerEvent,
   type ConnectionDropState,
 } from '@/lib/realtime-client';
+import { fitWithin, isAcceptedImageMime } from '@/lib/imageprep';
 import type { Profile } from '@/lib/student';
 import { ViewSpecSchema, type ViewSpec } from '@/lib/views';
 import ContentPanel, { type DisplayContent } from './components/ContentPanel';
 import MasterySidebar, { type Tally } from './components/MasterySidebar';
 
 type TranscriptLine = { speaker: 'user' | 'bot'; text: string };
+
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_IMAGE_EDGE = 1536;
+const IMAGE_JPEG_QUALITY = 0.85;
+const QUESTION_PHOTO_NOTE =
+  'Photo of a practice question I want to review. Read it, then quiz me on it.';
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+      } else {
+        reject(new Error('Could not read the question photo.'));
+      }
+    });
+    reader.addEventListener('error', () => reject(new Error('Could not read the question photo.')));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.addEventListener('load', () => resolve(image), { once: true });
+    image.addEventListener('error', () => reject(new Error('Could not decode the question photo.')), {
+      once: true,
+    });
+    image.src = dataUrl;
+  });
+}
+
+async function prepareImageDataUrl(file: File): Promise<string> {
+  const originalDataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(originalDataUrl);
+  const dimensions = fitWithin(image.naturalWidth, image.naturalHeight, MAX_IMAGE_EDGE);
+  const canvas = document.createElement('canvas');
+  canvas.width = dimensions.width;
+  canvas.height = dimensions.height;
+  const context = canvas.getContext('2d');
+  if (!context) throw new Error('Could not prepare the question photo.');
+  context.drawImage(image, 0, 0, dimensions.width, dimensions.height);
+  return canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
+}
 
 async function callTool(name: string, args: unknown): Promise<{ result?: unknown; error?: string }> {
   const res = await fetch('/api/tool', {
@@ -36,6 +82,7 @@ function formatElapsed(ms: number): string {
 export default function Home() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -344,6 +391,60 @@ export default function Home() {
     dropHandledRef.current = false;
   }, [clearPendingReconnect]);
 
+  const sendQuestionPhoto = useCallback(
+    async (file: File) => {
+      const client = clientRef.current;
+      if (!connected || !client) return;
+
+      setError(null);
+      if (!isAcceptedImageMime(file.type)) {
+        setError('Question photo must be a JPEG, PNG, or WebP image.');
+        return;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        setError('Question photo must be 8 MB or smaller.');
+        return;
+      }
+
+      try {
+        const dataUrl = await prepareImageDataUrl(file);
+        if (clientRef.current !== client) {
+          throw new Error('Photo was not sent because the session changed.');
+        }
+        client.sendImage(dataUrl, QUESTION_PHOTO_NOTE);
+        setTranscript((lines) => [...lines, { speaker: 'user', text: '[photo sent]' }]);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not send the question photo.');
+      }
+    },
+    [connected]
+  );
+
+  const handleFileSelect = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.currentTarget.files?.[0];
+      event.currentTarget.value = '';
+      if (file) void sendQuestionPhoto(file);
+    },
+    [sendQuestionPhoto]
+  );
+
+  useEffect(() => {
+    const handlePaste = (event: ClipboardEvent) => {
+      if (!connected) return;
+      const imageItem = Array.from(event.clipboardData?.items ?? []).find(
+        (item) => item.kind === 'file' && item.type.startsWith('image/')
+      );
+      const file = imageItem?.getAsFile();
+      if (!file) return;
+      event.preventDefault();
+      void sendQuestionPhoto(file);
+    };
+
+    document.addEventListener('paste', handlePaste);
+    return () => document.removeEventListener('paste', handlePaste);
+  }, [connected, sendQuestionPhoto]);
+
   useEffect(() => {
     return () => {
       clearPendingReconnect();
@@ -364,6 +465,23 @@ export default function Home() {
         >
           {connected ? 'Disconnect' : connecting ? 'Connecting…' : reconnecting ? 'Cancel' : 'Connect'}
         </button>
+        <input
+          ref={fileInputRef}
+          className="photo-input"
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          disabled={!connected}
+          tabIndex={-1}
+          onChange={handleFileSelect}
+        />
+        <button
+          type="button"
+          className="connect-button"
+          disabled={!connected}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          📷 Add question photo
+        </button>
         <span
           className={`status-pill status-pill--${connected ? 'connected' : reconnecting ? 'reconnecting' : 'disconnected'}`}
         >
@@ -371,7 +489,11 @@ export default function Home() {
         </span>
         {modeBadge && <span className="mode-badge">{modeBadge}</span>}
         <span className="elapsed-timer">{formatElapsed(elapsedMs)}</span>
-        {error && <span className="connect-error">{error}</span>}
+        {error && (
+          <span className="connect-error" role="alert">
+            {error}
+          </span>
+        )}
       </header>
 
       <main className="app-main">

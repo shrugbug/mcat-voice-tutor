@@ -217,6 +217,22 @@ export class RealtimeClient {
     });
   }
 
+  /** Sends one user image message, then asks the model to respond to it. */
+  sendImage(dataUrl: string, note?: string): void {
+    this.sendEvent({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [
+          { type: 'input_image', image_url: dataUrl },
+          ...(note ? [{ type: 'input_text', text: note }] : []),
+        ],
+      },
+    });
+    this.requestResponse();
+  }
+
   /** Requests a model response. Call exactly once after a batch of sendToolOutput calls. */
   requestResponse(): void {
     this.sendEvent({ type: 'response.create' });

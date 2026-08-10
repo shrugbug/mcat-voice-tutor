@@ -83,3 +83,53 @@ describe('RealtimeClient tool-result batch flow', () => {
     expect(() => client.sendToolOutput('call_1', { ok: true })).toThrow(/not open/);
   });
 });
+
+describe('RealtimeClient image input flow', () => {
+  test('sendImage sends the documented image message followed by one response.create', () => {
+    const { client, channel } = makeClientWithFakeChannel();
+
+    client.sendImage(
+      'data:image/jpeg;base64,cGhvdG8=',
+      'Photo of a practice question I want to review.'
+    );
+
+    expect(sentEvents(channel)).toEqual([
+      {
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [
+            { type: 'input_image', image_url: 'data:image/jpeg;base64,cGhvdG8=' },
+            { type: 'input_text', text: 'Photo of a practice question I want to review.' },
+          ],
+        },
+      },
+      { type: 'response.create' },
+    ]);
+  });
+
+  test('sendImage omits the text content part when no note is provided', () => {
+    const { client, channel } = makeClientWithFakeChannel();
+
+    client.sendImage('data:image/webp;base64,cGhvdG8=');
+
+    expect(sentEvents(channel)).toEqual([
+      {
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_image', image_url: 'data:image/webp;base64,cGhvdG8=' }],
+        },
+      },
+      { type: 'response.create' },
+    ]);
+  });
+
+  test('sendImage throws before sending when the data channel is not open', () => {
+    const client = new RealtimeClient({} as HTMLAudioElement);
+
+    expect(() => client.sendImage('data:image/png;base64,cGhvdG8=')).toThrow(/not open/);
+  });
+});

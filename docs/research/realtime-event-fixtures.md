@@ -110,3 +110,27 @@ session config):
   }
 }
 ```
+
+## 6. Image input mid-session (VERBATIM, fetched 2026-08-10)
+
+Source: developers.openai.com realtime inputs/outputs guide. Supported by
+gpt-realtime and gpt-realtime-2; "attach an image as a content part in a user
+message, and the model can incorporate what's in the image when it responds."
+
+```javascript
+const event = {
+  type: "conversation.item.create",
+  item: {
+    type: "message",
+    role: "user",
+    content: [
+      {
+        type: "input_image",
+        image_url: `data:image/{format};base64,${base64Image}`,
+      },
+    ],
+  },
+};
+```
+
+No documented size/format limits beyond the data-URL shape.

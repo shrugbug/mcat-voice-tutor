@@ -96,6 +96,49 @@ function formatElapsed(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
+// The student's first name, shown in the pre-connect landing greeting.
+const STUDENT_NAME = 'Aryan';
+// Landing eyebrow's right-hand "file" label -- not derived from STUDENT_NAME since it carries
+// the surname, which the app has no other use for.
+const STUDENT_FILE_LABEL = 'A.';
+
+const EXAM_DATE = process.env.NEXT_PUBLIC_EXAM_DATE ?? '2026-08-23';
+// First bubble of the scantron countdown. Fixed rather than "today" so the row has a stable
+// length across the study window instead of shrinking every day.
+const SCANTRON_START_DATE = '2026-08-10';
+
+function toLocalIsoDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+// Inclusive list of YYYY-MM-DD dates from `start` to `end`. Pure w.r.t. "today" -- only the
+// bubble state (past/today/future) below depends on the current date.
+function getDaysArray(start: string, end: string): string[] {
+  const days: string[] = [];
+  const cursor = new Date(`${start}T00:00:00`);
+  const endDate = new Date(`${end}T00:00:00`);
+  while (cursor <= endDate) {
+    days.push(toLocalIsoDate(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}
+
+function daysUntil(fromIso: string, toIso: string): number {
+  const from = new Date(`${fromIso}T00:00:00`);
+  const to = new Date(`${toIso}T00:00:00`);
+  return Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000));
+}
+
+function formatExamCaption(examIso: string): string {
+  const date = new Date(`${examIso}T00:00:00`);
+  const month = date.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+  return `${month} ${date.getDate()}`;
+}
+
 export default function Home() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
@@ -128,6 +171,18 @@ export default function Home() {
   // Mirrors `startedAt` for reads outside the React update cycle (pauseElapsedTimer needs the
   // current segment start synchronously, without going through a setState updater -- see below).
   const startedAtRef = useRef<number | null>(null);
+
+  // Time-of-day greeting word and "today" for the scantron countdown. Both default to a value
+  // that renders identically on the server and on first client paint (avoiding a hydration
+  // mismatch), then get corrected to the real client clock in the effect below.
+  const [greetingWord, setGreetingWord] = useState<'morning' | 'afternoon' | 'evening'>('morning');
+  const [todayIso, setTodayIso] = useState(SCANTRON_START_DATE);
+  useEffect(() => {
+    const now = new Date();
+    const hour = now.getHours();
+    setGreetingWord(hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening');
+    setTodayIso(toLocalIsoDate(now));
+  }, []);
 
   const [reconnecting, setReconnecting] = useState(false);
   // True once the user has clicked Disconnect for the current client lifecycle -- shouldReconnect
@@ -484,63 +539,141 @@ export default function Home() {
     };
   }, [clearPendingReconnect]);
 
+  const showLanding = !connected && !connecting && !reconnecting;
+
+  const scantronDays = getDaysArray(SCANTRON_START_DATE, EXAM_DATE);
+  const daysRemaining = Math.max(0, daysUntil(todayIso, EXAM_DATE));
+
+  const dueChips = (profile?.due ?? []).slice(0, 3).map((categoryId) => {
+    const category = profile?.categories.find((c) => c.id === categoryId);
+    const flagged = (profile?.recentMisconceptions ?? []).some((m) => m.categoryId === categoryId);
+    return { id: categoryId, name: category?.name ?? categoryId, flagged };
+  });
+
   return (
     <div className="app">
       <audio ref={audioRef} autoPlay style={{ display: 'none' }} />
 
-      <header className="app-header">
-        <button
-          type="button"
-          className="connect-button"
-          onClick={connected || reconnecting ? handleDisconnect : handleConnect}
-          disabled={connecting}
-        >
-          {connected ? 'Disconnect' : connecting ? 'Connecting…' : reconnecting ? 'Cancel' : 'Connect'}
-        </button>
-        <input
-          ref={fileInputRef}
-          className="photo-input"
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          disabled={!connected}
-          tabIndex={-1}
-          onChange={handleFileSelect}
-        />
-        <button
-          type="button"
-          className="connect-button"
-          disabled={!connected}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          📷 Add question photo
-        </button>
-        <span
-          className={`status-pill status-pill--${connected ? 'connected' : reconnecting ? 'reconnecting' : 'disconnected'}`}
-        >
-          {connected ? 'Connected' : reconnecting ? 'Reconnecting…' : 'Disconnected'}
-        </span>
-        {modeBadge && <span className="mode-badge">{modeBadge}</span>}
-        <span className="elapsed-timer">{formatElapsed(elapsedMs)}</span>
-        {error && (
-          <span className="connect-error" role="alert">
-            {error}
-          </span>
-        )}
-      </header>
+      {showLanding ? (
+        <div className="landing">
+          <div className="landing__inner">
+            <div className="landing__eyebrow">
+              <span>MCAT ORAL EXAMINER</span>
+              <span>FILE · {STUDENT_FILE_LABEL}</span>
+            </div>
 
-      <main className="app-main">
-        <ContentPanel content={content} view={view} />
-        <MasterySidebar profile={profile} tally={tally} />
-      </main>
+            <h1 className="landing__greeting">
+              Good {greetingWord}, {STUDENT_NAME}.
+            </h1>
 
-      <footer className="transcript-strip">
-        {transcript.length === 0 && <p className="transcript-strip__empty">Transcript will appear here.</p>}
-        {[...transcript].reverse().map((line, i) => (
-          <p key={i} className={`transcript-line transcript-line--${line.speaker}`}>
-            <strong>{line.speaker === 'user' ? 'You' : 'Examiner'}:</strong> {line.text}
-          </p>
-        ))}
-      </footer>
+            <p className="landing__status">
+              {dueChips.length > 0 ? (
+                <>
+                  Your examiner has your file. Due today:{' '}
+                  {dueChips.map((chip) => (
+                    <span key={chip.id} className="landing__chip">
+                      {chip.flagged && <span className="landing__chip-dot" aria-hidden="true" />}
+                      {chip.name}
+                    </span>
+                  ))}
+                </>
+              ) : (
+                'Your examiner is ready when you are.'
+              )}
+            </p>
+
+            <div className="landing__scantron">
+              <div
+                className="landing__bubbles"
+                role="img"
+                aria-label={`${daysRemaining} days remaining until the exam`}
+              >
+                {scantronDays.map((day) => {
+                  const state = day < todayIso ? 'past' : day === todayIso ? 'today' : 'future';
+                  return <span key={day} className={`landing__bubble landing__bubble--${state}`} />;
+                })}
+              </div>
+              <p className="landing__countdown">
+                {daysRemaining} DAYS REMAINING · EXAM {formatExamCaption(EXAM_DATE)}
+              </p>
+            </div>
+
+            <div className="landing__action">
+              <button type="button" className="landing__begin" onClick={handleConnect} disabled={connecting}>
+                Begin session
+              </button>
+              <span className="landing__caption">microphone starts on connect</span>
+              {error && (
+                <span className="connect-error" role="alert">
+                  {error}
+                </span>
+              )}
+            </div>
+
+            <div className="landing__footer">
+              <p className="landing__footer-line">REMEMBERS — every miss, and why you missed it</p>
+              <p className="landing__footer-line">ADAPTS — questions escalate as you answer</p>
+              <p className="landing__footer-line">SHOWS — photos of paper questions become drills</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
+          <header className="app-header">
+            <button
+              type="button"
+              className="connect-button"
+              onClick={connected || reconnecting ? handleDisconnect : handleConnect}
+              disabled={connecting}
+            >
+              {connected ? 'Disconnect' : connecting ? 'Connecting…' : reconnecting ? 'Cancel' : 'Connect'}
+            </button>
+            <input
+              ref={fileInputRef}
+              className="photo-input"
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              disabled={!connected}
+              tabIndex={-1}
+              onChange={handleFileSelect}
+            />
+            <button
+              type="button"
+              className="connect-button"
+              disabled={!connected}
+              onClick={() => fileInputRef.current?.click()}
+            >
+              📷 Add question photo
+            </button>
+            <span
+              className={`status-pill status-pill--${connected ? 'connected' : reconnecting ? 'reconnecting' : 'disconnected'}`}
+            >
+              {connected ? 'Connected' : reconnecting ? 'Reconnecting…' : 'Disconnected'}
+            </span>
+            {modeBadge && <span className="mode-badge">{modeBadge}</span>}
+            <span className="elapsed-timer">{formatElapsed(elapsedMs)}</span>
+            {error && (
+              <span className="connect-error" role="alert">
+                {error}
+              </span>
+            )}
+          </header>
+
+          <main className="app-main">
+            <ContentPanel content={content} view={view} />
+            <MasterySidebar profile={profile} tally={tally} />
+          </main>
+
+          <footer className="transcript-strip">
+            {transcript.length === 0 && <p className="transcript-strip__empty">Transcript will appear here.</p>}
+            {[...transcript].reverse().map((line, i) => (
+              <p key={i} className={`transcript-line transcript-line--${line.speaker}`}>
+                <strong>{line.speaker === 'user' ? 'You' : 'Examiner'}:</strong> {line.text}
+              </p>
+            ))}
+          </footer>
+        </>
+      )}
     </div>
   );
 }

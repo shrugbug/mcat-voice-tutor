@@ -44,6 +44,6 @@ session/event handling.
 
 ## Session Log
 
-### 2026-08-10
-- Completed: Full build from empty repo — voice examiner (Realtime API + reasoning-model question brain), student model w/ episodic memory + spaced rep, PDF RAG (7 resources ingested), render_view generative UI, photo-of-question input, seamless reconnect, morning-briefing (7:30a) + nightly-tuner (11p) launchd jobs, Aryan-personalized landing page. 180 tests. Repo published private w/ arluigi collaborator.
-- Next: Aryan's section scores → scored seed (`npm run seed -- --cp N --cars N --bb N --ps N`); apply first nightly tuning proposal from docs/tuning/; optionally trust `devin` interactively for future agent work.
+### 2026-08-10 (part 2)
+- Completed: dogfooded full UI (fixed table overflow affordance + passage tables + app title; /debug/views harness); transcript + UI/UX-feedback capture feeding nightly tuner; deployed to VPS (mcat.illinihunt.org, basic auth, rotated); domain shortlist checked (mcat.coach chosen, user checkout pending); OSS-voice research (verdict: keep Realtime API); skills library unhobbled (37 trimmed, 8 flagged); multi-user launch spec suite + pricing on feature/multi-user-launch.
+- Next: user buys mcat.coach then DNS+cert; Aryan's section scores -> scored seed; review feature/multi-user-launch specs (licensing blocker: KA-derived corpus is CC BY-NC) and open PR when ready; 8 skill-audit flags; apply first docs/tuning proposal.

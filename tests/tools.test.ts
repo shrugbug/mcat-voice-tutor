@@ -52,9 +52,7 @@ describe('dispatchTool', () => {
     ).rejects.toBeInstanceOf(ZodError);
   });
 
-  test('throws for an unknown tool name', async () => {
-    await expect(dispatchTool(db, 'show_content', {})).rejects.toThrow(
-      'Unknown tool: show_content'
-    );
+  test.each(['show_content', 'render_view'])('throws for client-side tool %s', async (name) => {
+    await expect(dispatchTool(db, name, {})).rejects.toThrow(`Unknown tool: ${name}`);
   });
 });

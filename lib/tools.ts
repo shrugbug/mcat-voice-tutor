@@ -4,6 +4,7 @@ import { embed } from './embeddings';
 import { generateQuestion, QuestionSchema } from './questions';
 import { searchMaterials } from './rag';
 import { getProfile, recordResult, writeSessionSummary } from './student';
+import { VIEW_COMPONENT_NAMES } from './views';
 
 const recordResultArgsSchema = z.strictObject({
   categoryId: z.string(),
@@ -117,6 +118,28 @@ export const TOOL_DEFS = [
         focusNext: { type: 'string', description: 'What the student should focus on next.' },
       },
       required: ['mode', 'summary', 'focusNext'],
+      additionalProperties: false,
+    },
+  },
+  {
+    type: 'function',
+    name: 'render_view',
+    description: 'Replace the main study panel with one registered interactive view.',
+    parameters: {
+      type: 'object',
+      properties: {
+        component: {
+          type: 'string',
+          enum: VIEW_COMPONENT_NAMES,
+          description: 'The registered component to render.',
+        },
+        props: {
+          type: 'object',
+          description: 'The component props. These are validated strictly in the study interface.',
+          additionalProperties: true,
+        },
+      },
+      required: ['component', 'props'],
       additionalProperties: false,
     },
   },

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RealtimeClient, handleServerEvent, type Action, type ServerEvent } from '@/lib/realtime-client';
 import type { Profile } from '@/lib/student';
+import { ViewSpecSchema, type ViewSpec } from '@/lib/views';
 import ContentPanel, { type DisplayContent } from './components/ContentPanel';
 import MasterySidebar, { type Tally } from './components/MasterySidebar';
 
@@ -33,6 +34,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   const [content, setContent] = useState<DisplayContent | null>(null);
+  const [view, setView] = useState<ViewSpec | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tally, setTally] = useState<Tally>({ asked: 0, correct: 0 });
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
@@ -69,9 +71,30 @@ export default function Home() {
         if (action.name === 'show_content') {
           const args = action.args as { html: string; kind: string };
           setContent({ html: args.html, kind: args.kind });
+          setView(null);
           if (args.kind === 'question') {
             setTally((t) => ({ ...t, asked: t.asked + 1 }));
           }
+          return { ok: true };
+        }
+
+        if (action.name === 'render_view') {
+          const args =
+            typeof action.args === 'object' && action.args !== null && !Array.isArray(action.args)
+              ? (action.args as Record<string, unknown>)
+              : {};
+          const props = args.props;
+          const parsed = ViewSpecSchema.safeParse({
+            component: args.component,
+            ...(typeof props === 'object' && props !== null && !Array.isArray(props)
+              ? props
+              : { props }),
+          });
+
+          if (!parsed.success) return { error: parsed.error.message };
+
+          setView(parsed.data);
+          setContent(null);
           return { ok: true };
         }
 
@@ -193,7 +216,7 @@ export default function Home() {
       </header>
 
       <main className="app-main">
-        <ContentPanel content={content} />
+        <ContentPanel content={content} view={view} />
         <MasterySidebar profile={profile} tally={tally} />
       </main>
 

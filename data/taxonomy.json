@@ -1,0 +1,462 @@
+{
+  "meta": {
+    "source": "AAMC, What's on the MCAT Exam? (© 2020 Association of American Medical Colleges)",
+    "source_urls": [
+      "https://students-residents.aamc.org/whats-mcat-exam/publication-chapters/whats-mcat-exam",
+      "https://students-residents.aamc.org/media/9261/download"
+    ],
+    "verified": "2026-08-09"
+  },
+  "sections": [
+    {
+      "id": "chem_phys",
+      "name": "Chemical and Physical Foundations of Biological Systems",
+      "foundational_concepts": [
+        {
+          "id": "4",
+          "name": "Complex living organisms transport materials, sense their environment, process signals, and respond to changes using processes understood in terms of physical principles.",
+          "categories": [
+            {
+              "id": "4A",
+              "name": "Translational motion, forces, work, energy, and equilibrium in living systems",
+              "topics": [
+                "Translational Motion",
+                "Force",
+                "Equilibrium",
+                "Work",
+                "Energy of Point Object Systems",
+                "Periodic Motion"
+              ]
+            },
+            {
+              "id": "4B",
+              "name": "Importance of fluids for the circulation of blood, gas movement, and gas exchange",
+              "topics": [
+                "Fluids",
+                "Circulatory System",
+                "Gas Phase"
+              ]
+            },
+            {
+              "id": "4C",
+              "name": "Electrochemistry and electrical circuits and their elements",
+              "topics": [
+                "Electrostatics",
+                "Circuit Elements",
+                "Magnetism",
+                "Electrochemistry",
+                "Specialized Cell - Nerve Cell"
+              ]
+            },
+            {
+              "id": "4D",
+              "name": "How light and sound interact with matter",
+              "topics": [
+                "Sound",
+                "Light, Electromagnetic Radiation",
+                "Molecular Structure and Absorption Spectra",
+                "Geometrical Optics"
+              ]
+            },
+            {
+              "id": "4E",
+              "name": "Atoms, nuclear decay, electronic structure, and atomic chemical behavior",
+              "topics": [
+                "Atomic Nucleus",
+                "Electronic Structure",
+                "The Periodic Table - Classification of Elements Into Groups by Electronic Structure",
+                "The Periodic Table - Variations of Chemical Properties with Group and Row",
+                "Stoichiometry"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "5",
+          "name": "The principles that govern chemical interactions and reactions form the basis for a broader understanding of the molecular dynamics of living systems.",
+          "categories": [
+            {
+              "id": "5A",
+              "name": "Unique nature of water and its solutions",
+              "topics": [
+                "Acid-Base Equilibria",
+                "Ions in Solutions",
+                "Solubility",
+                "Titration"
+              ]
+            },
+            {
+              "id": "5B",
+              "name": "Nature of molecules and intermolecular interactions",
+              "topics": [
+                "Covalent Bond",
+                "Liquid Phase - Intermolecular Forces"
+              ]
+            },
+            {
+              "id": "5C",
+              "name": "Separation and purification methods",
+              "topics": [
+                "Separations and Purifications"
+              ]
+            },
+            {
+              "id": "5D",
+              "name": "Structure, function, and reactivity of biologically relevant molecules",
+              "topics": [
+                "Nucleotides and Nucleic Acids",
+                "Amino Acids, Peptides, Proteins",
+                "The Three-Dimensional Protein Structure",
+                "Nonenzymatic Protein Function",
+                "Lipids",
+                "Carbohydrates",
+                "Aldehydes and Ketones",
+                "Alcohols",
+                "Carboxylic Acids",
+                "Acid Derivatives (Anhydrides, Amides, Esters)",
+                "Phenols",
+                "Polycyclic and Heterocyclic Aromatic Compounds"
+              ]
+            },
+            {
+              "id": "5E",
+              "name": "Principles of chemical thermodynamics and kinetics",
+              "topics": [
+                "Enzymes",
+                "Principles of Bioenergetics",
+                "Energy Changes in Chemical Reactions - Thermochemistry, Thermodynamics",
+                "Rate Processes in Chemical Reactions - Kinetics and Equilibrium"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "cars",
+      "name": "Critical Analysis and Reasoning Skills",
+      "categories": [
+        {
+          "id": "cars_comprehension",
+          "name": "Foundations of Comprehension"
+        },
+        {
+          "id": "cars_within_text",
+          "name": "Reasoning Within the Text"
+        },
+        {
+          "id": "cars_beyond_text",
+          "name": "Reasoning Beyond the Text"
+        }
+      ]
+    },
+    {
+      "id": "bio_biochem",
+      "name": "Biological and Biochemical Foundations of Living Systems",
+      "foundational_concepts": [
+        {
+          "id": "1",
+          "name": "Biomolecules have unique properties that determine how they contribute to the structure and function of cells and how they participate in the processes necessary to maintain life.",
+          "categories": [
+            {
+              "id": "1A",
+              "name": "Structure and function of proteins and their constituent amino acids",
+              "topics": [
+                "Amino Acids",
+                "Protein Structure",
+                "Nonenzymatic Protein Function",
+                "Enzyme Structure and Function",
+                "Control of Enzyme Activity"
+              ]
+            },
+            {
+              "id": "1B",
+              "name": "Transmission of genetic information from the gene to the protein",
+              "topics": [
+                "Nucleic Acid Structure and Function",
+                "DNA Replication",
+                "Repair of DNA",
+                "Genetic Code",
+                "Transcription",
+                "Translation",
+                "Eukaryotic Chromosome Organization",
+                "Control of Gene Expression in Prokaryotes",
+                "Control of Gene Expression in Eukaryotes",
+                "Recombinant DNA and Biotechnology"
+              ]
+            },
+            {
+              "id": "1C",
+              "name": "Transmission of heritable information from generation to generation and the processes that increase genetic diversity",
+              "topics": [
+                "Evidence That DNA Is Genetic Material",
+                "Mendelian Concepts",
+                "Meiosis and Other Factors Affecting Genetic Variability",
+                "Analytic Methods",
+                "Evolution"
+              ]
+            },
+            {
+              "id": "1D",
+              "name": "Principles of bioenergetics and fuel molecule metabolism",
+              "topics": [
+                "Principles of Bioenergetics",
+                "Carbohydrates",
+                "Glycolysis, Gluconeogenesis, and the Pentose Phosphate Pathway",
+                "Principles of Metabolic Regulation",
+                "Citric Acid Cycle",
+                "Metabolism of Fatty Acids and Proteins",
+                "Oxidative Phosphorylation",
+                "Hormonal Regulation and Integration of Metabolism"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "2",
+          "name": "Highly organized assemblies of molecules, cells, and organs interact to carry out the functions of living organisms.",
+          "categories": [
+            {
+              "id": "2A",
+              "name": "Assemblies of molecules, cells, and groups of cells within single cellular and multicellular organisms",
+              "topics": [
+                "Plasma Membrane",
+                "Membrane-Bound Organelles and Defining Characteristics of Eukaryotic Cells",
+                "Cytoskeleton",
+                "Tissues Formed From Eukaryotic Cells"
+              ]
+            },
+            {
+              "id": "2B",
+              "name": "The structure, growth, physiology, and genetics of prokaryotes and viruses",
+              "topics": [
+                "Cell Theory",
+                "Classification and Structure of Prokaryotic Cells",
+                "Growth and Physiology of Prokaryotic Cells",
+                "Genetics of Prokaryotic Cells",
+                "Virus Structure",
+                "Viral Life Cycle"
+              ]
+            },
+            {
+              "id": "2C",
+              "name": "Processes of cell division, differentiation, and specialization",
+              "topics": [
+                "Mitosis",
+                "Biosignaling",
+                "Reproductive System",
+                "Embryogenesis",
+                "Mechanisms of Development"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "3",
+          "name": "Complex systems of tissues and organs sense the internal and external environments of multicellular organisms, and through integrated functioning, maintain a stable internal environment within an ever-changing external environment.",
+          "categories": [
+            {
+              "id": "3A",
+              "name": "Structure and functions of the nervous and endocrine systems and ways these systems coordinate the organ systems",
+              "topics": [
+                "Nervous System: Structure and Function",
+                "Nerve Cell",
+                "Electrochemistry",
+                "Biosignaling",
+                "Lipids",
+                "Endocrine System: Hormones and Their Sources",
+                "Endocrine System: Mechanisms of Hormone Action"
+              ]
+            },
+            {
+              "id": "3B",
+              "name": "Structure and integrative functions of the main organ systems",
+              "topics": [
+                "Respiratory System",
+                "Circulatory System",
+                "Lymphatic System",
+                "Immune System",
+                "Digestive System",
+                "Excretory System",
+                "Reproductive System",
+                "Muscle System",
+                "Specialized Cell - Muscle Cell",
+                "Skeletal System",
+                "Skin System"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "psych_soc",
+      "name": "Psychological, Social, and Biological Foundations of Behavior",
+      "foundational_concepts": [
+        {
+          "id": "6",
+          "name": "Biological, psychological, and sociocultural factors influence the ways that individuals perceive, think about, and react to the world.",
+          "categories": [
+            {
+              "id": "6A",
+              "name": "Sensing the environment",
+              "topics": [
+                "Sensory Processing",
+                "Vision",
+                "Hearing",
+                "Other Senses",
+                "Perception"
+              ]
+            },
+            {
+              "id": "6B",
+              "name": "Making sense of the environment",
+              "topics": [
+                "Attention",
+                "Cognition",
+                "Consciousness",
+                "Memory",
+                "Language"
+              ]
+            },
+            {
+              "id": "6C",
+              "name": "Responding to the world",
+              "topics": [
+                "Emotion",
+                "Stress"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "7",
+          "name": "Biological, psychological, and sociocultural factors influence behavior and behavior change.",
+          "categories": [
+            {
+              "id": "7A",
+              "name": "Individual influences on behavior",
+              "topics": [
+                "Biological Bases of Behavior",
+                "Personality",
+                "Psychological Disorders",
+                "Motivation",
+                "Attitudes"
+              ]
+            },
+            {
+              "id": "7B",
+              "name": "Social processes that influence human behavior",
+              "topics": [
+                "How the Presence of Others Affects Individual Behavior",
+                "Group Decision-Making Processes",
+                "Normative and Nonnormative Behavior",
+                "Socialization"
+              ]
+            },
+            {
+              "id": "7C",
+              "name": "Attitude and behavior change",
+              "topics": [
+                "Habituation and Dishabituation",
+                "Associative Learning",
+                "Observational Learning",
+                "Theories of Attitude and Behavior Change"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "8",
+          "name": "Psychological, sociocultural, and biological factors influence the way we think about ourselves and others, as well as how we interact with others.",
+          "categories": [
+            {
+              "id": "8A",
+              "name": "Self-identity",
+              "topics": [
+                "Self-Concept, Self-Identity, and Social Identity",
+                "Formation of Identity"
+              ]
+            },
+            {
+              "id": "8B",
+              "name": "Social thinking",
+              "topics": [
+                "Attributing Behavior to Persons or Situations",
+                "Prejudice and Bias",
+                "Processes Related to Stereotypes"
+              ]
+            },
+            {
+              "id": "8C",
+              "name": "Social interactions",
+              "topics": [
+                "Elements of Social Interaction",
+                "Self-Presentation and Interacting With Others",
+                "Social Behavior",
+                "Discrimination"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "9",
+          "name": "Cultural and social differences influence well-being.",
+          "categories": [
+            {
+              "id": "9A",
+              "name": "Understanding social structure",
+              "topics": [
+                "Theoretical Approaches",
+                "Social Institutions",
+                "Culture"
+              ]
+            },
+            {
+              "id": "9B",
+              "name": "Demographic characteristics and processes",
+              "topics": [
+                "Demographic Structure of Society",
+                "Demographic Shifts and Social Change"
+              ]
+            }
+          ]
+        },
+        {
+          "id": "10",
+          "name": "Social stratification and access to resources influence well-being.",
+          "categories": [
+            {
+              "id": "10A",
+              "name": "Social inequality",
+              "topics": [
+                "Spatial Inequality",
+                "Social Class",
+                "Health Disparities",
+                "Health Care Disparities"
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "sirs": [
+    {
+      "id": "SIRS1",
+      "name": "Knowledge of Scientific Concepts and Principles"
+    },
+    {
+      "id": "SIRS2",
+      "name": "Scientific Reasoning and Problem-Solving"
+    },
+    {
+      "id": "SIRS3",
+      "name": "Reasoning About the Design and Execution of Research"
+    },
+    {
+      "id": "SIRS4",
+      "name": "Data-Based and Statistical Reasoning"
+    }
+  ]
+}

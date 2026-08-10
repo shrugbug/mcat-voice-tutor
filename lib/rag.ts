@@ -4,17 +4,31 @@ export type Hit = { source: string; page: number | null; text: string; score: nu
 
 const SEP = '\n\n';
 
-/** Split a paragraph that is longer than `max` into fixed-size pieces. */
-function splitParagraph(paragraph: string, max: number): string[] {
-  if (paragraph.length <= max) return [paragraph];
+/**
+ * Split a paragraph only when it exceeds `size`. Oversized paragraphs are cut into `maxPiece`
+ * chars so a piece still fits alongside a carried overlap tail.
+ */
+function splitParagraph(paragraph: string, size: number, maxPiece: number): string[] {
+  if (paragraph.length <= size) return [paragraph];
   const pieces: string[] = [];
-  for (let i = 0; i < paragraph.length; i += max) pieces.push(paragraph.slice(i, i + max));
+  for (let i = 0; i < paragraph.length; i += maxPiece) pieces.push(paragraph.slice(i, i + maxPiece));
   return pieces;
 }
 
 export function chunkText(text: string, size = 1400, overlap = 200): string[] {
-  const ov = Math.max(0, Math.min(overlap, Math.floor(size / 2)));
-  const maxPiece = Math.max(1, size - ov - SEP.length);
+  if (!Number.isInteger(size) || size <= 0) {
+    throw new Error(`chunkText: size must be a positive integer, got ${size}`);
+  }
+  if (!Number.isInteger(overlap) || overlap < 0) {
+    throw new Error(`chunkText: overlap must be a non-negative integer, got ${overlap}`);
+  }
+  if (overlap + SEP.length >= size) {
+    throw new Error(
+      `chunkText: overlap (${overlap}) plus the ${SEP.length}-char separator must leave room inside size (${size})`
+    );
+  }
+
+  const maxPiece = size - overlap - SEP.length;
   const paragraphs = text
     .split(/\n\s*\n+/)
     .map((p) => p.trim())
@@ -22,21 +36,25 @@ export function chunkText(text: string, size = 1400, overlap = 200): string[] {
 
   const chunks: string[] = [];
   let buf = '';
-  let hasContent = false;
+  let carry = '';
 
   const flush = () => {
-    if (!hasContent) return;
+    if (!buf) return;
     const chunk = buf.trim();
     chunks.push(chunk);
-    buf = ov > 0 ? chunk.slice(-ov) : '';
-    hasContent = false;
+    carry = overlap > 0 ? chunk.slice(-overlap) : '';
+    buf = '';
   };
 
   for (const paragraph of paragraphs) {
-    for (const piece of splitParagraph(paragraph, maxPiece)) {
+    for (const piece of splitParagraph(paragraph, size, maxPiece)) {
       if (buf && buf.length + SEP.length + piece.length > size) flush();
-      buf = buf ? buf + SEP + piece : piece;
-      hasContent = true;
+      if (buf) {
+        buf += SEP + piece;
+      } else {
+        // The overlap tail is only worth carrying if the piece still fits behind it.
+        buf = carry && carry.length + SEP.length + piece.length <= size ? carry + SEP + piece : piece;
+      }
     }
   }
   flush();

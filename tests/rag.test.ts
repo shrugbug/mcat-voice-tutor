@@ -59,6 +59,37 @@ describe('chunkText', () => {
     for (const c of chunks) expect(c.length).toBeLessThanOrEqual(1400);
     expect(chunks.join('').replace(/\s+/g, '').length).toBeGreaterThanOrEqual(5000);
   });
+
+  test('keeps a paragraph of exactly size chars whole', () => {
+    const size = 1400;
+    const exact = 'z'.repeat(size);
+    expect(chunkText(exact, size, 200)).toEqual([exact]);
+  });
+
+  test('keeps an exactly-size paragraph whole when it follows another paragraph', () => {
+    const size = 1400;
+    const exact = 'z'.repeat(size);
+    const chunks = chunkText(`intro paragraph\n\n${exact}`, size, 200);
+    expect(chunks).toContain(exact);
+    for (const c of chunks) expect(c.length).toBeLessThanOrEqual(size);
+  });
+
+  test('splits a paragraph only once it exceeds size', () => {
+    const size = 1400;
+    expect(chunkText('z'.repeat(size + 1), size, 200).length).toBeGreaterThan(1);
+  });
+
+  test('respects size for tiny size/overlap values', () => {
+    const chunks = chunkText('a'.repeat(50), 10, 2);
+    expect(chunks.length).toBeGreaterThan(1);
+    for (const c of chunks) expect(c.length).toBeLessThanOrEqual(10);
+  });
+
+  test('rejects an overlap that leaves no room inside size', () => {
+    expect(() => chunkText('abc', 10, 8)).toThrow(/overlap/);
+    expect(() => chunkText('abc', 10, 20)).toThrow(/overlap/);
+    expect(() => chunkText('abc', 0, 0)).toThrow(/size/);
+  });
 });
 
 describe('cosine', () => {

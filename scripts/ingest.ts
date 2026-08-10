@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
-import { openDb } from '../lib/db';
+import { fileURLToPath } from 'node:url';
+import { openDb, type DB } from '../lib/db';
 import { chunkText, toBlob } from '../lib/rag';
 import { embed } from '../lib/embeddings';
 
@@ -32,7 +33,35 @@ export function extractPages(file: string): string[] {
   }
 }
 
-type PageChunk = { page: number; text: string };
+export type PageChunk = { page: number; text: string };
+
+/**
+ * Embed every chunk before touching the database, then swap the source's rows in one transaction,
+ * so a failed or short embedding response can never destroy rows that are already valid.
+ */
+export async function writeChunks(
+  db: DB,
+  source: string,
+  chunks: PageChunk[],
+  force: boolean
+): Promise<void> {
+  const vectors = await embed(chunks.map((c) => c.text));
+  if (vectors.length !== chunks.length) {
+    throw new Error(
+      `${source}: embedding count mismatch (${vectors.length} vectors for ${chunks.length} chunks)`
+    );
+  }
+
+  const remove = db.prepare('DELETE FROM chunks WHERE source = ?');
+  const insert = db.prepare(
+    'INSERT INTO chunks (source, page, text, embedding) VALUES (?, ?, ?, ?)'
+  );
+  const replaceSource = db.transaction((rows: PageChunk[]) => {
+    if (force) remove.run(source);
+    rows.forEach((row, i) => insert.run(source, row.page, row.text, toBlob(vectors[i])));
+  });
+  replaceSource(chunks);
+}
 
 function chunkPages(pages: string[]): PageChunk[] {
   const chunks: PageChunk[] = [];
@@ -85,21 +114,7 @@ async function main(argv: string[]): Promise<void> {
 
     if (!db) continue;
 
-    if (force) db.prepare('DELETE FROM chunks WHERE source = ?').run(source);
-
-    const vectors = await embed(chunks.map((c) => c.text));
-    if (vectors.length !== chunks.length) {
-      throw new Error(
-        `${source}: embedding count mismatch (${vectors.length} vectors for ${chunks.length} chunks)`
-      );
-    }
-    const insert = db.prepare(
-      'INSERT INTO chunks (source, page, text, embedding) VALUES (?, ?, ?, ?)'
-    );
-    const insertAll = db.transaction((rows: PageChunk[]) => {
-      rows.forEach((row, i) => insert.run(source, row.page, row.text, toBlob(vectors[i])));
-    });
-    insertAll(chunks);
+    await writeChunks(db, source, chunks, force);
     console.log(`${source}: inserted ${chunks.length} chunks`);
   }
 
@@ -107,7 +122,20 @@ async function main(argv: string[]): Promise<void> {
   db?.close();
 }
 
-main(process.argv.slice(2)).catch((err) => {
-  console.error(err instanceof Error ? err.message : err);
-  process.exit(1);
-});
+/** True only when this file is the process entry point, so tests can import it safely. */
+function runAsCli(): boolean {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (runAsCli()) {
+  main(process.argv.slice(2)).catch((err) => {
+    console.error(err instanceof Error ? err.message : err);
+    process.exit(1);
+  });
+}

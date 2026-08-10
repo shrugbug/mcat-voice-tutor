@@ -41,3 +41,9 @@ session/event handling.
 - Real `npm run ingest` over `resources/` and/or `pdfs/`.
 - Live smoke test (`npm run acceptance`) and the live voice checklist
   (`docs/superpowers/plans/acceptance-checklist.md`) with the user, mic-enabled.
+
+## Session Log
+
+### 2026-08-10
+- Completed: Full build from empty repo — voice examiner (Realtime API + reasoning-model question brain), student model w/ episodic memory + spaced rep, PDF RAG (7 resources ingested), render_view generative UI, photo-of-question input, seamless reconnect, morning-briefing (7:30a) + nightly-tuner (11p) launchd jobs, Aryan-personalized landing page. 180 tests. Repo published private w/ arluigi collaborator.
+- Next: Aryan's section scores → scored seed (`npm run seed -- --cp N --cars N --bb N --ps N`); apply first nightly tuning proposal from docs/tuning/; optionally trust `devin` interactively for future agent work.

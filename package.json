@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "ingest": "tsx scripts/ingest.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -22,6 +23,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.0",
+    "tsx": "^4.23.11",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

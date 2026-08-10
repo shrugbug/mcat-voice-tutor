@@ -38,4 +38,18 @@ describe('fitWithin', () => {
   test('rounds a scaled fractional dimension to the nearest whole pixel', () => {
     expect(fitWithin(2000, 1333, 1536)).toEqual({ width: 1536, height: 1024 });
   });
+
+  test('clamps an extremely wide image so the rounded short edge is never 0', () => {
+    const result = fitWithin(10_000_000, 1, 1536);
+    expect(result.width).toBe(1536);
+    expect(result.height).toBeGreaterThanOrEqual(1);
+    expect(result.height).not.toBe(0);
+  });
+
+  test('clamps an extremely tall image so the rounded short edge is never 0', () => {
+    const result = fitWithin(1, 10_000_000, 1536);
+    expect(result.height).toBe(1536);
+    expect(result.width).toBeGreaterThanOrEqual(1);
+    expect(result.width).not.toBe(0);
+  });
 });

@@ -63,6 +63,23 @@ async function prepareImageDataUrl(file: File): Promise<string> {
   return canvas.toDataURL('image/jpeg', IMAGE_JPEG_QUALITY);
 }
 
+// Polls `isInFlight` every 100ms and resolves once it reports false, up to a 5s cap so a stuck
+// batch can never hang the photo path forever. The photo path is user-paced, so a sub-second
+// wait here is imperceptible.
+function waitForToolBatch(isInFlight: () => boolean): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + 5000;
+    const poll = () => {
+      if (!isInFlight() || Date.now() >= deadline) {
+        resolve();
+        return;
+      }
+      setTimeout(poll, 100);
+    };
+    poll();
+  });
+}
+
 async function callTool(name: string, args: unknown): Promise<{ result?: unknown; error?: string }> {
   const res = await fetch('/api/tool', {
     method: 'POST',
@@ -83,6 +100,12 @@ export default function Home() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const clientRef = useRef<RealtimeClient | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // True from the moment handleActions starts resolving a batch of tool calls until it has sent
+  // every function_call_output AND fired the batch's single requestResponse(). sendQuestionPhoto
+  // polls this (see waitForToolBatch) before calling client.sendImage, which fires its own
+  // requestResponse() -- without the wait, an image sent mid-batch could have its response.create
+  // land between sendToolOutput calls and the batch's own requestResponse(), orphaning outputs.
+  const toolBatchInFlightRef = useRef(false);
 
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -233,14 +256,19 @@ export default function Home() {
 
       if (toolCalls.length === 0) return;
 
+      toolBatchInFlightRef.current = true;
       void Promise.all(
         toolCalls.map(async (action) => ({ callId: action.callId, output: await resolveToolCall(action) }))
-      ).then((results) => {
-        for (const { callId, output } of results) {
-          client.sendToolOutput(callId, output);
-        }
-        client.requestResponse();
-      });
+      )
+        .then((results) => {
+          for (const { callId, output } of results) {
+            client.sendToolOutput(callId, output);
+          }
+          client.requestResponse();
+        })
+        .finally(() => {
+          toolBatchInFlightRef.current = false;
+        });
     },
     [resolveToolCall]
   );
@@ -408,6 +436,10 @@ export default function Home() {
 
       try {
         const dataUrl = await prepareImageDataUrl(file);
+        // Wait out any tool-call batch that's between its sendToolOutput calls and its single
+        // requestResponse() -- sendImage() below fires its own requestResponse(), and firing it
+        // mid-batch would orphan that batch's outputs. See toolBatchInFlightRef above.
+        await waitForToolBatch(() => toolBatchInFlightRef.current);
         if (clientRef.current !== client) {
           throw new Error('Photo was not sent because the session changed.');
         }

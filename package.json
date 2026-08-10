@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed": "tsx scripts/seed.ts",
-    "ingest": "tsx scripts/ingest.ts"
+    "ingest": "tsx scripts/ingest.ts",
+    "acceptance": "tsx scripts/acceptance.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

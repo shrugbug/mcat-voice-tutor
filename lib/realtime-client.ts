@@ -101,6 +101,57 @@ const REALTIME_CALLS_URL = 'https://api.openai.com/v1/realtime/calls';
 const DATA_CHANNEL_NAME = 'oai-events';
 
 /**
+ * Message sent (as a conversation.item.create, role user, input_text) immediately after a
+ * reconnect's data channel reopens, before the single response.create that follows it. Asks the
+ * model to re-orient itself using the tool it already has (get_student_profile) rather than
+ * inventing recap content from nothing -- the client has no memory of the pre-drop conversation
+ * beyond the transcript strip, which is UI-only and not replayed into the model's context.
+ */
+export const RESUME_MESSAGE =
+  'SYSTEM: session resumed after connection drop — call get_student_profile, recap where we were in one sentence, continue';
+
+/** connectionstate values that indicate the connection dropped, plus the data channel's own close event. */
+export type ConnectionDropState = RTCPeerConnectionState | 'datachannel-closed';
+
+/** Max automatic reconnect attempts before giving up and surfacing manual Connect. */
+export const MAX_RECONNECT_ATTEMPTS = 3;
+
+/** Backoff schedule (ms) for reconnect attempts 1, 2, 3. */
+export const RECONNECT_BACKOFF_MS = [1000, 5000, 15000] as const;
+
+/**
+ * Pure decision function: should the client attempt an automatic reconnect right now?
+ *
+ * - Never reconnects if the user clicked Disconnect (userInitiated) -- WS-B item 1 is
+ *   explicitly SKIPPED: no auto-connect/reconnect against user intent, manual Connect always
+ *   wins.
+ * - Never reconnects once `attempt` (attempts already made) has reached MAX_RECONNECT_ATTEMPTS.
+ * - Reconnects only on the drop states that actually indicate a dead connection: pc
+ *   connectionstate 'disconnected' | 'failed' | 'closed', or a data channel close (how the
+ *   60-minute server session cap manifests). Benign states ('connected', 'connecting', 'new')
+ *   never trigger a reconnect.
+ */
+export function shouldReconnect(state: ConnectionDropState, userInitiated: boolean, attempt: number): boolean {
+  if (userInitiated) return false;
+  if (attempt >= MAX_RECONNECT_ATTEMPTS) return false;
+  return state === 'disconnected' || state === 'failed' || state === 'closed' || state === 'datachannel-closed';
+}
+
+/**
+ * Backoff delay (ms) before making the Nth reconnect attempt (1-based: attempt 1 is the first
+ * retry after the initial drop). Throws for out-of-range attempt numbers rather than returning
+ * a fallback -- callers should have already stopped via shouldReconnect before reaching this.
+ */
+export function getReconnectDelay(attempt: number): number {
+  const idx = attempt - 1;
+  const delay = RECONNECT_BACKOFF_MS[idx];
+  if (delay === undefined) {
+    throw new Error(`getReconnectDelay: attempt out of range (${attempt}); expected 1-${RECONNECT_BACKOFF_MS.length}`);
+  }
+  return delay;
+}
+
+/**
  * Manages the WebRTC connection to the OpenAI Realtime API: mints a session
  * token from our own /api/session route, negotiates the peer connection,
  * and exposes a simple event/send interface over the 'oai-events' data
@@ -114,6 +165,7 @@ export class RealtimeClient {
   private micStream: MediaStream | null = null;
   private readonly handlers = new Set<(event: ServerEvent) => void>();
   private readonly connectionStateHandlers = new Set<(state: RTCPeerConnectionState) => void>();
+  private readonly dataChannelCloseHandlers = new Set<() => void>();
 
   constructor(audioElement: HTMLAudioElement) {
     this.audioElement = audioElement;
@@ -126,6 +178,15 @@ export class RealtimeClient {
   /** Surfaces RTCPeerConnection state changes (e.g. 'connected', 'disconnected', 'failed', 'closed'). */
   onConnectionStateChange(handler: (state: RTCPeerConnectionState) => void): void {
     this.connectionStateHandlers.add(handler);
+  }
+
+  /**
+   * Surfaces the data channel's own 'close' event -- distinct from RTCPeerConnection
+   * connectionstate because the 60-minute server session cap closes the data channel without
+   * necessarily flipping the peer connection state first (see ConnectionDropState/shouldReconnect).
+   */
+  onDataChannelClose(handler: () => void): void {
+    this.dataChannelCloseHandlers.add(handler);
   }
 
   sendEvent(event: object): void {
@@ -161,7 +222,18 @@ export class RealtimeClient {
     this.sendEvent({ type: 'response.create' });
   }
 
-  async connect(): Promise<void> {
+  /**
+   * Negotiates a fresh WebRTC connection.
+   *
+   * Pass `{ resume: true }` after an automatic reconnect (see shouldReconnect/getReconnectDelay):
+   * once the new data channel opens, this sends the RESUME_MESSAGE as a conversation.item.create
+   * (role user, input_text) so the model re-orients via get_student_profile and recaps, THEN
+   * calls requestResponse() exactly once. On a normal (non-resume) connect, requestResponse() is
+   * still called exactly once, with no preceding message. Either way there is exactly one
+   * requestResponse() call per connect() -- resume never double-fires response.create, it just
+   * queues one extra conversation.item.create ahead of the same single response.create.
+   */
+  async connect(opts: { resume?: boolean } = {}): Promise<void> {
     try {
       const tokenResponse = await fetch('/api/session');
       if (!tokenResponse.ok) {
@@ -193,6 +265,11 @@ export class RealtimeClient {
         const event = JSON.parse(e.data) as ServerEvent;
         for (const handler of this.handlers) {
           handler(event);
+        }
+      });
+      dc.addEventListener('close', () => {
+        for (const handler of this.dataChannelCloseHandlers) {
+          handler();
         }
       });
 
@@ -232,6 +309,16 @@ export class RealtimeClient {
         );
       });
 
+      if (opts.resume) {
+        this.sendEvent({
+          type: 'conversation.item.create',
+          item: {
+            type: 'message',
+            role: 'user',
+            content: [{ type: 'input_text', text: RESUME_MESSAGE }],
+          },
+        });
+      }
       this.requestResponse();
     } catch (err) {
       // Failed connect: stop the mic and tear down anything partially set up so a retry

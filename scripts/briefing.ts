@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { openDb } from '../lib/db';
 import { buildBriefing } from '../lib/briefing';
+import { fetchSentryIssues } from './fetch-sentry';
 
 const EXAM_DATE = process.env.EXAM_DATE || '2026-08-23';
 const BRIEFINGS_DIR = 'docs/briefings';
@@ -30,11 +31,12 @@ function summarize(markdown: string): string {
   return daysLine ? daysLine.replace(/\*\*/g, '') : 'Briefing ready.';
 }
 
-function main(): void {
+async function main(): Promise<void> {
+  const sentryIssues = await fetchSentryIssues();
   const db = openDb();
   let markdown: string;
   try {
-    markdown = buildBriefing(db, EXAM_DATE);
+    markdown = buildBriefing(db, EXAM_DATE, sentryIssues?.map((issue) => issue.title) ?? []);
   } finally {
     db.close();
   }
@@ -53,9 +55,7 @@ function main(): void {
   writeFileSync(SENTINEL_FILE, new Date().toISOString(), 'utf8');
 }
 
-try {
-  main();
-} catch (error) {
+main().catch((error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exitCode = 1;
-}
+});

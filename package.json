@@ -12,6 +12,8 @@
     "acceptance": "tsx scripts/acceptance.ts",
     "briefing": "tsx scripts/briefing.ts",
     "tune": "tsx scripts/nightly-tune.ts",
+    "pull": "bash scripts/pull-remote.sh",
+    "combine": "tsx scripts/combine-db.ts",
     "import-exam": "tsx scripts/import-exam.ts"
   },
   "dependencies": {

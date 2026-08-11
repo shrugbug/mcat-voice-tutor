@@ -48,6 +48,9 @@ data/mcat.db-shm
 data/acceptance.db
 data/acceptance.db-wal
 data/acceptance.db-shm
+data/combined.db
+data/combined.db-wal
+data/combined.db-shm
 pdfs/
 .env
 resources/

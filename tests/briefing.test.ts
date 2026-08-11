@@ -109,6 +109,14 @@ describe('buildBriefing (no WS-A schema: no due_at, no episodes)', () => {
     expect(md).toMatch(/## Today's plan\n- Block 1 \(20 min\): Drill/);
   });
 
+  test('names at most the top two open bugs when supplied', () => {
+    const md = buildBriefing(db, futureDate(5), ['First bug', 'Second bug', 'Third bug']);
+    expect(md).toContain('## Open bugs');
+    expect(md).toContain('- First bug');
+    expect(md).toContain('- Second bug');
+    expect(md).not.toContain('Third bug');
+  });
+
   test('returns fallback plan text when no categories are seeded', () => {
     const empty = openPreWsADb();
     const md = buildBriefing(empty, futureDate(5));

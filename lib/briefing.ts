@@ -138,7 +138,7 @@ function buildPlan(due: DueCategory[], weakest: WeakCategory[]): string[] {
  * `episodes` table exist yet (checked via PRAGMA table_info / sqlite_master), since WS-A is
  * being built in a parallel worktree and may not have merged.
  */
-export function buildBriefing(db: DB, examDate: string): string {
+export function buildBriefing(db: DB, examDate: string, bugs: string[] = []): string {
   const today = new Date().toISOString().slice(0, 10);
   const days = daysToExam(examDate);
   const weakest = getWeakestCategories(db, 5);
@@ -203,6 +203,14 @@ export function buildBriefing(db: DB, examDate: string): string {
     });
   }
   lines.push('');
+
+  if (bugs.length > 0) {
+    lines.push('## Open bugs');
+    for (const bug of bugs.slice(0, 2)) {
+      lines.push(`- ${bug}`);
+    }
+    lines.push('');
+  }
 
   lines.push("## Today's plan");
   for (const line of buildPlan(due, weakest)) {

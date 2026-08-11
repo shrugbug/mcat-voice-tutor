@@ -698,3 +698,13 @@ a {
   outline: 2px solid var(--eraser);
   outline-offset: 2px;
 }
+
+/* Question stem shown above the answer options (added 2026-08-11: the stem was spoken but
+   never displayed, so a student who missed it aloud had nothing to re-read). */
+.answer-grid__stem {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 100%;
+  overflow-wrap: break-word;
+}

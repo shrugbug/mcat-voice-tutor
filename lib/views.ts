@@ -9,11 +9,11 @@ export const VIEW_COMPONENT_NAMES = [
   'passage',
 ] as const;
 
-const flashcardDeckSchema = z.strictObject({
+const flashcardDeckSchema = z.object({
   component: z.literal('flashcard_deck'),
   cards: z
     .array(
-      z.strictObject({
+      z.object({
         front: z.string(),
         back: z.string(),
       })
@@ -24,8 +24,10 @@ const flashcardDeckSchema = z.strictObject({
 });
 
 const answerGridSchema = z
-  .strictObject({
+  .object({
     component: z.literal('answer_grid'),
+    /** The question stem, shown above the options. Optional so older payloads still render. */
+    stem: z.string().max(4000).optional(),
     options: z.array(z.string()).length(4),
     revealed: z.boolean(),
     correctIndex: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)]).optional(),
@@ -40,18 +42,18 @@ const answerGridSchema = z
     }
   });
 
-const timerSchema = z.strictObject({
+const timerSchema = z.object({
   component: z.literal('timer'),
   seconds: z.number().int().positive().max(7200),
   label: z.string().optional(),
   running: z.boolean(),
 });
 
-const masteryChartSchema = z.strictObject({
+const masteryChartSchema = z.object({
   component: z.literal('mastery_chart'),
   categories: z
     .array(
-      z.strictObject({
+      z.object({
         id: z.string(),
         name: z.string(),
         mastery: z.number().min(0).max(1),
@@ -62,7 +64,7 @@ const masteryChartSchema = z.strictObject({
 });
 
 const dataTableSchema = z
-  .strictObject({
+  .object({
     component: z.literal('data_table'),
     headers: z.array(z.string()).min(1).max(8),
     rows: z.array(z.array(z.string())).max(30),
@@ -80,7 +82,7 @@ const dataTableSchema = z
     });
   });
 
-const passageSchema = z.strictObject({
+const passageSchema = z.object({
   component: z.literal('passage'),
   html: z.string(),
   title: z.string().optional(),

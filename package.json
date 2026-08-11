@@ -11,7 +11,8 @@
     "ingest": "tsx scripts/ingest.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "briefing": "tsx scripts/briefing.ts",
-    "tune": "tsx scripts/nightly-tune.ts"
+    "tune": "tsx scripts/nightly-tune.ts",
+    "import-exam": "tsx scripts/import-exam.ts"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

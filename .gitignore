@@ -55,3 +55,6 @@ resources/
 docs/briefings/
 docs/tuning/
 dogfood-output/
+
+# Remote db snapshots pulled for tuning/import (contain real student data)
+data/remote/

@@ -374,10 +374,9 @@ describe('24-hour window', () => {
 
 describe('tool errors in the prompt', () => {
   test('bugs section draws from both sources', () => {
+    // openDb() creates tool_errors (it ships in lib/db.ts); only the source column is added
+    // by the combine step, so that is all this fixture needs to add.
     const db = openDb(':memory:');
-    db.exec(`CREATE TABLE tool_errors(
-      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
-      tool TEXT NOT NULL, message TEXT NOT NULL, arg_keys TEXT)`);
     db.exec('ALTER TABLE tool_errors ADD COLUMN source TEXT');
     db.prepare("INSERT INTO tool_errors (tool,message,arg_keys,source) VALUES ('render_view','Too many rows','view','prod')").run();
     db.prepare("INSERT INTO tool_errors (tool,message,arg_keys,source) VALUES ('render_view','Too many rows','view','demo')").run();

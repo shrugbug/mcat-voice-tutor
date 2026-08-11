@@ -125,6 +125,25 @@ const DATA_CHANNEL_NAME = 'oai-events';
 export const RESUME_MESSAGE =
   'SYSTEM: session resumed after connection drop — call get_student_profile, recap where we were in one sentence, continue';
 
+/** Matches the transcript row cap in app/api/transcript/route.ts. */
+export const MAX_USER_TEXT_LENGTH = 4000;
+
+/**
+ * Builds the conversation item for a typed student turn. Same event shape the reconnect resume
+ * already sends, so this path is proven in production rather than inferred from the API docs.
+ */
+export function buildUserTextItem(text: string): object {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) throw new Error('Cannot send an empty message.');
+  if (trimmed.length > MAX_USER_TEXT_LENGTH) {
+    throw new Error(`Message exceeds ${MAX_USER_TEXT_LENGTH} characters.`);
+  }
+  return {
+    type: 'conversation.item.create',
+    item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: trimmed }] },
+  };
+}
+
 /** connectionstate values that indicate the connection dropped, plus the data channel's own close event. */
 export type ConnectionDropState = RTCPeerConnectionState | 'datachannel-closed';
 
@@ -245,6 +264,12 @@ export class RealtimeClient {
         ],
       },
     });
+    this.requestResponse();
+  }
+
+  /** Sends a typed student turn and asks for a response. */
+  sendUserText(text: string): void {
+    this.sendEvent(buildUserTextItem(text));
     this.requestResponse();
   }
 

@@ -73,11 +73,11 @@ describe('combineInto', () => {
   });
 
   test('skips a table that does not exist in a source', () => {
-    // tool_errors does not exist in the remote dbs until Task 2 is deployed there.
+    // tool_errors does not exist in the remote dbs until the app change is deployed there.
+    // openDb() now creates it (it ships in lib/db.ts), so drop it to simulate an older source.
     const target = openDb(':memory:');
     const prod = seedSource(0.7, 'p');
-    prod.exec('CREATE TABLE tool_errors (id INTEGER PRIMARY KEY AUTOINCREMENT)');
-    prod.exec('DROP TABLE tool_errors');
+    prod.exec('DROP TABLE IF EXISTS tool_errors');
 
     expect(() => combineInto(target, [{ source: 'prod', db: prod }])).not.toThrow();
     for (const db of [target, prod]) db.close();

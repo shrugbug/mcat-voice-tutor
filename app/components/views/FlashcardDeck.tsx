@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { ViewSpec } from '@/lib/views';
+import MathText from './MathText';
 
 type Props = Extract<ViewSpec, { component: 'flashcard_deck' }>;
 
@@ -28,7 +29,7 @@ export default function FlashcardDeck({ cards, title }: Props) {
         aria-label={flipped ? 'Show the front of this flashcard' : 'Show the back of this flashcard'}
       >
         <span className="flashcard-deck__side">{flipped ? 'Back' : 'Front'}</span>
-        <span className="flashcard-deck__text">{flipped ? card.back : card.front}</span>
+        <span className="flashcard-deck__text"><MathText text={flipped ? card.back : card.front} /></span>
         <span className="flashcard-deck__hint">Press to flip</span>
       </button>
       <div className="flashcard-deck__controls">

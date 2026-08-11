@@ -122,11 +122,31 @@ describe('ViewSpecSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  test('rejects a data table with more than 30 rows', () => {
+  describe('data_table row cap', () => {
+    const table = (rowCount: number) => ({
+      component: 'data_table' as const,
+      headers: ['Category', 'Mastery'],
+      rows: Array.from({ length: rowCount }, (_, i) => [`cat-${i}`, '0.50']),
+    });
+
+    test('accepts a row per taxonomy category (34) — the curriculum overview case', () => {
+      expect(ViewSpecSchema.safeParse(table(34)).success).toBe(true);
+    });
+
+    test('accepts up to 60 rows', () => {
+      expect(ViewSpecSchema.safeParse(table(60)).success).toBe(true);
+    });
+
+    test('still rejects an unbounded table', () => {
+      expect(ViewSpecSchema.safeParse(table(61)).success).toBe(false);
+    });
+  });
+
+  test('rejects a data table with more than 60 rows', () => {
     const result = ViewSpecSchema.safeParse({
       component: 'data_table',
       headers: ['Header'],
-      rows: Array.from({ length: 31 }, () => ['Cell']),
+      rows: Array.from({ length: 61 }, () => ['Cell']),
     });
 
     expect(result.success).toBe(false);

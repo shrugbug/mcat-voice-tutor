@@ -18,6 +18,9 @@ export function openDb(path: string = DEFAULT_DB_PATH) {
     CREATE TABLE IF NOT EXISTS sessions(
       id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
       mode TEXT NOT NULL, summary TEXT NOT NULL, focus_next TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS tool_errors(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts TEXT DEFAULT (datetime('now')),
+      tool TEXT NOT NULL, message TEXT NOT NULL, arg_keys TEXT);
     CREATE TABLE IF NOT EXISTS chunks(
       id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT NOT NULL, page INTEGER,
       text TEXT NOT NULL, embedding BLOB NOT NULL);

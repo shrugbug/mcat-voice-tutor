@@ -6,6 +6,7 @@ import {
   handleServerEvent,
   shouldReconnect,
   getReconnectDelay,
+  MAX_USER_TEXT_LENGTH,
   type Action,
   type ServerEvent,
   type ConnectionDropState,
@@ -165,6 +166,7 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [tally, setTally] = useState<Tally>({ asked: 0, correct: 0 });
   const [transcript, setTranscript] = useState<TranscriptLine[]>([]);
+  const [draft, setDraft] = useState('');
   const [modeBadge, setModeBadge] = useState<string | null>(null);
 
   const [startedAt, setStartedAt] = useState<number | null>(null);
@@ -584,6 +586,21 @@ export default function Home() {
     [sendQuestionPhoto]
   );
 
+  const sendDraft = useCallback(() => {
+    const text = draft.trim();
+    if (!text || !connected || !clientRef.current) return;
+    try {
+      clientRef.current.sendUserText(text);
+      // Mirror into the transcript so typed turns reach the tuner's dialogue view; without this
+      // a typed session is invisible to the nightly tuner.
+      setTranscript((t) => [...t, { speaker: 'user', text }]);
+      pushTranscriptEntry('user', text);
+      setDraft('');
+    } catch (sendError) {
+      setError(sendError instanceof Error ? sendError.message : 'Could not send message.');
+    }
+  }, [draft, connected, pushTranscriptEntry]);
+
   useEffect(() => {
     const handlePaste = (event: ClipboardEvent) => {
       if (!connected) return;
@@ -741,6 +758,27 @@ export default function Home() {
               </p>
             ))}
           </footer>
+
+          <form
+            className="composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              sendDraft();
+            }}
+          >
+            <input
+              type="text"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              disabled={!connected}
+              maxLength={MAX_USER_TEXT_LENGTH}
+              placeholder={connected ? 'Type a question…' : 'Connect to type'}
+              aria-label="Send a typed message"
+            />
+            <button type="submit" disabled={!connected || draft.trim().length === 0}>
+              Send
+            </button>
+          </form>
         </>
       )}
     </div>

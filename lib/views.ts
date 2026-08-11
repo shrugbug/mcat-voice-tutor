@@ -67,7 +67,7 @@ const dataTableSchema = z
   .object({
     component: z.literal('data_table'),
     headers: z.array(z.string()).min(1).max(8),
-    rows: z.array(z.array(z.string())).max(30),
+    rows: z.array(z.array(z.string())).max(60),
     title: z.string().optional(),
   })
   .superRefine((view, context) => {

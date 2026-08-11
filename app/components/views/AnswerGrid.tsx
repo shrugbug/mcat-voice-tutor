@@ -1,4 +1,5 @@
 import type { ViewSpec } from '@/lib/views';
+import MathText from './MathText';
 
 type Props = Extract<ViewSpec, { component: 'answer_grid' }>;
 
@@ -19,7 +20,7 @@ export default function AnswerGrid({ stem, options, revealed, correctIndex }: Pr
           return (
             <li key={OPTION_LETTERS[index]} className={`answer-grid__option${resultClass}`}>
               <span className="answer-grid__letter">{OPTION_LETTERS[index]}</span>
-              <span>{option}</span>
+              <span><MathText text={option} /></span>
             </li>
           );
         })}

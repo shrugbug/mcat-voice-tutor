@@ -38,21 +38,24 @@ backup="/root/repos/mcat/data/backups/env-sentry-tokens-$(date +%Y%m%dT%H%M%SZ)"
 mkdir -p /root/repos/mcat/data/backups
 cp .env "$backup"
 
-append_if_missing() {
+set_env_var() {
   key="$1"
   value="$2"
-  if ! grep -q "^${key}=" .env; then
+  if grep -q "^${key}=" .env; then
+    tmp="$(mktemp .env.XXXXXX)"
+    awk -v k="$key" -v v="$value" -F= 'BEGIN{OFS="="} $1==k{$0=k"="v} 1' .env > "$tmp" && mv "$tmp" .env
+  else
     printf '%s=%s\n' "$key" "$value" >> .env
   fi
 }
 
 # The nightly issue reader uses SENTRY_AUTH_TOKEN.
-append_if_missing SENTRY_AUTH_TOKEN "$read_token"
+set_env_var SENTRY_AUTH_TOKEN "$read_token"
 
 # The org:ci token is kept separate for the Next.js source-map/release build hook.
-append_if_missing SENTRY_CI_TOKEN "$ci_token"
-append_if_missing SENTRY_ORG "$SENTRY_ORG"
-append_if_missing SENTRY_PROJECT "$SENTRY_PROJECT"
+set_env_var SENTRY_CI_TOKEN "$ci_token"
+set_env_var SENTRY_ORG "$SENTRY_ORG"
+set_env_var SENTRY_PROJECT "$SENTRY_PROJECT"
 
 chmod 600 .env
 printf 'backup=%s\n' "$backup"

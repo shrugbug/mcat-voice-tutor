@@ -3,6 +3,9 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { openDb, type DB } from '../lib/db';
+import { formatIssues, type SentryIssue } from '../lib/sentry-issues';
+import { fetchSentryIssues } from './fetch-sentry';
+import { buildWriteBackPlan, pushWriteBack } from './push-feedback-status';
 
 const CHAT_COMPLETIONS_URL = 'https://api.openai.com/v1/chat/completions';
 const TUNING_DIR = 'docs/tuning';
@@ -33,6 +36,15 @@ export type FeedbackRow = {
   kind: 'ui' | 'ux' | 'content' | 'other';
   quote: string;
   paraphrase: string | null;
+  source?: string;
+  orig_id?: number;
+};
+
+export type ToolErrorRow = {
+  tool: string;
+  message: string;
+  count: number;
+  source: string | null;
 };
 
 const MAX_TRANSCRIPT_LINES = 400;
@@ -46,6 +58,8 @@ export type TuningData = {
   transcript: TranscriptRow[] | null;
   /** null when the feedback table doesn't exist yet in this db. */
   feedback: FeedbackRow[] | null;
+  /** null when the tool_errors table doesn't exist yet in this db. */
+  toolErrors: ToolErrorRow[] | null;
 };
 
 function hasTable(db: DB, table: string): boolean {
@@ -55,6 +69,29 @@ function hasTable(db: DB, table: string): boolean {
   return row !== undefined;
 }
 
+/** True when `table` carries a `source` column -- absent on a plain local db. */
+function hasSourceColumn(db: DB, table: string): boolean {
+  return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).some(
+    (c) => c.name === 'source'
+  );
+}
+
+/**
+ * Instruction tuning must see prod dialogue only. The demo instance's transcripts are largely
+ * ambient room audio the bot answered as if it were a student; tuning the examiner's
+ * conversational behaviour on that would fit proposals to conversations no student had.
+ */
+function prodOnly(db: DB, table: string): string {
+  return hasSourceColumn(db, table) ? `AND source = 'prod'` : '';
+}
+
+/**
+ * SQLite stamps datetime('now') in UTC; this job runs at 23:00 US Central, which is already the
+ * next UTC day. A calendar-day query therefore asks for the wrong day every night. Use an
+ * explicit lookback instead.
+ */
+const WINDOW = `ts >= datetime('now','-24 hours') AND ts <= datetime('now')`;
+
 /** Reads today's results (and episodes, if the table exists) for the tuning prompt. Read-only. */
 export function gatherTuningData(db: DB): TuningData {
   const today = new Date().toISOString().slice(0, 10);
@@ -63,7 +100,7 @@ export function gatherTuningData(db: DB): TuningData {
     .prepare(
       `SELECT category_id as categoryId, difficulty, correct, error_type as errorType, mode
        FROM results
-       WHERE date(ts) = date('now')`
+       WHERE ${WINDOW} ${prodOnly(db, 'results')}`
     )
     .all()
     .map((r) => {
@@ -76,7 +113,7 @@ export function gatherTuningData(db: DB): TuningData {
         .prepare(
           `SELECT category_id as categoryId, error_type as errorType, misconception
            FROM episodes
-           WHERE date(ts) = date('now')`
+           WHERE ${WINDOW} ${prodOnly(db, 'episodes')}`
         )
         .all() as EpisodeRow[])
     : null;
@@ -86,7 +123,7 @@ export function gatherTuningData(db: DB): TuningData {
         .prepare(
           `SELECT role, text FROM (
              SELECT id, role, text FROM transcripts
-             WHERE date(ts) = date('now')
+             WHERE ${WINDOW} ${prodOnly(db, 'transcripts')}
              ORDER BY id DESC
              LIMIT ?
            ) ORDER BY id ASC`
@@ -97,14 +134,28 @@ export function gatherTuningData(db: DB): TuningData {
   const feedback = hasTable(db, 'feedback')
     ? (db
         .prepare(
-          `SELECT id, kind, quote, paraphrase
+          `SELECT id, kind, quote, paraphrase${hasSourceColumn(db, 'feedback') ? ', source, orig_id' : ''}
            FROM feedback
-           WHERE date(ts) = date('now') AND status = 'new'`
+           WHERE ${WINDOW} AND status = 'new'`
         )
         .all() as FeedbackRow[])
     : null;
 
-  return { date: today, results, episodes, transcript, feedback };
+  const toolErrors = hasTable(db, 'tool_errors')
+    ? (db
+        .prepare(
+          `SELECT tool, message, COUNT(*) AS count,
+                  ${hasSourceColumn(db, 'tool_errors') ? 'group_concat(DISTINCT source)' : 'NULL'} AS source
+           FROM tool_errors
+           WHERE ${WINDOW}
+           GROUP BY tool, message
+           ORDER BY count DESC
+           LIMIT 20`
+        )
+        .all() as ToolErrorRow[])
+    : null;
+
+  return { date: today, results, episodes, transcript, feedback, toolErrors };
 }
 
 /** Marks the given feedback rows as 'proposed' after their proposals have been written out. Read-write. */
@@ -122,7 +173,10 @@ export function markFeedbackProposed(db: DB, ids: number[]): void {
  * gatherTuningData (db I/O) and requestTuningProposals (network I/O) so it can be unit tested
  * without a live API call.
  */
-export function buildTuningPrompt(data: TuningData): string {
+export function buildTuningPrompt(
+  data: TuningData,
+  sentryIssues: SentryIssue[] | null = null
+): string {
   const byCategory = new Map<string, { attempts: number; correct: number }>();
   const errorTypeCounts = new Map<string, number>();
 
@@ -196,9 +250,22 @@ export function buildTuningPrompt(data: TuningData): string {
         ? feedbackLines.join('\n')
         : '(no feedback recorded today)',
     '',
-    'Output format: TWO separate markdown sections.',
+    'BUGS (tool dispatch failures in the last 24h, from BOTH prod and demo — these contain no student content, so both sources count):',
+    data.toolErrors === null
+      ? '(tool_errors table not present)'
+      : data.toolErrors.length > 0
+        ? data.toolErrors
+            .map((e) => `- ${e.tool}: ${e.message} (${e.count}x${e.source ? `, ${e.source}` : ''})`)
+            .join('\n')
+        : '(no tool errors in the last 24h)',
+    '',
+    'SENTRY (unresolved issues, last 24h — client crashes and API failures that tool_errors cannot see):',
+    formatIssues(sentryIssues),
+    '',
+    'Output format: THREE separate markdown sections.',
     '1. "## Instruction-tuning proposals" — a numbered list of proposed changes to lib/instructions.ts (the examiner prompt) only, each with a one-line rationale citing the specific data point that motivated it. Do NOT rewrite the instructions yourself — only propose changes for a human to apply.',
     '2. "## UI/UX proposals" — a numbered list, one per UI/UX feedback item above (omit this section entirely if there is no feedback today). Each proposal must be concrete and minimal, and reference the app\'s actual components where relevant: ContentPanel, MasterySidebar, the six render_view components (flashcard_deck, answer_grid, timer, mastery_chart, data_table, passage), or the landing page. Keep these clearly separate from the instruction-tuning proposals — they are about the app\'s UI code, not lib/instructions.ts.',
+    '3. "## Bugs" — a numbered list, one per distinct tool failure above, each naming the likely cause in the app code and the smallest fix. Omit this section entirely if there are no bugs. These are defects, not tuning suggestions — keep them separate from both other sections.',
   ];
 
   return sections.join('\n');
@@ -259,6 +326,7 @@ function notify(message: string): void {
 }
 
 async function main(): Promise<void> {
+  const sentryIssues = await fetchSentryIssues();
   const db = openDb();
   let data: TuningData;
   try {
@@ -267,7 +335,7 @@ async function main(): Promise<void> {
     db.close();
   }
 
-  const prompt = buildTuningPrompt(data);
+  const prompt = buildTuningPrompt(data, sentryIssues);
   const proposals = await requestTuningProposals(prompt);
 
   const header = [
@@ -283,15 +351,19 @@ async function main(): Promise<void> {
   const outPath = join(TUNING_DIR, `proposal-${data.date}.md`);
   writeFileSync(outPath, markdown, 'utf8');
 
+  // Only after the proposal file exists: a crash between generating and writing must not consume
+  // the feedback.
   if (data.feedback && data.feedback.length > 0) {
-    const writeDb = openDb();
-    try {
-      markFeedbackProposed(
-        writeDb,
-        data.feedback.map((f) => f.id)
-      );
-    } finally {
-      writeDb.close();
+    const rows = data.feedback as unknown as { id: number; source?: string; orig_id?: number }[];
+    if (rows[0]?.source !== undefined) {
+      pushWriteBack(buildWriteBackPlan(rows.map((r) => ({ source: r.source!, orig_id: r.orig_id! }))));
+    } else {
+      const writeDb = openDb();
+      try {
+        markFeedbackProposed(writeDb, rows.map((r) => r.id));
+      } finally {
+        writeDb.close();
+      }
     }
   }
 

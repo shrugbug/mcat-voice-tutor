@@ -1,4 +1,5 @@
 import type { ViewSpec } from '@/lib/views';
+import MathText from './MathText';
 
 type Props = Extract<ViewSpec, { component: 'data_table' }>;
 
@@ -12,7 +13,7 @@ export default function DataTable({ headers, rows, title }: Props) {
             <tr>
               {headers.map((header, index) => (
                 <th key={index} scope="col">
-                  {header}
+                  <MathText text={header} />
                 </th>
               ))}
             </tr>
@@ -21,7 +22,7 @@ export default function DataTable({ headers, rows, title }: Props) {
             {rows.map((row, rowIndex) => (
               <tr key={rowIndex}>
                 {row.map((cell, cellIndex) => (
-                  <td key={cellIndex}>{cell}</td>
+                  <td key={cellIndex}><MathText text={cell} /></td>
                 ))}
               </tr>
             ))}

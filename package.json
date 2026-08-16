@@ -11,10 +11,15 @@
     "ingest": "tsx scripts/ingest.ts",
     "acceptance": "tsx scripts/acceptance.ts",
     "briefing": "tsx scripts/briefing.ts",
-    "tune": "tsx scripts/nightly-tune.ts"
+    "tune": "tsx scripts/nightly-tune.ts",
+    "pull": "bash scripts/pull-remote.sh",
+    "combine": "tsx scripts/combine-db.ts",
+    "import-exam": "tsx scripts/import-exam.ts"
   },
   "dependencies": {
+    "@sentry/nextjs": "^10.70.0",
     "better-sqlite3": "^13.0.3",
+    "katex": "^0.18.4",
     "next": "16.3.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
@@ -22,6 +27,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
+    "@types/katex": "^0.16.8",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

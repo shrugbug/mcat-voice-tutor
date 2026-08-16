@@ -55,6 +55,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
       episodes: null,
       transcript: null,
       feedback: null,
+      toolErrors: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- 4A: 4 attempts, 75% accuracy');
@@ -71,6 +72,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
       episodes: null,
       transcript: null,
       feedback: null,
+      toolErrors: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- content: 2');
@@ -78,7 +80,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('notes episodic memory is unavailable when episodes is null (WS-A not merged)', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(episodic memory not available yet — WS-A not merged)');
   });
@@ -93,6 +95,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
       ],
       transcript: null,
       feedback: null,
+      toolErrors: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('- 4A (reasoning): Confused impulse with momentum');
@@ -100,7 +103,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('handles zero attempts without dividing by zero', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(no results recorded today)');
     expect(prompt).toContain('(no error types recorded today)');
@@ -108,7 +111,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('instructs the model never to rewrite instructions itself', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toMatch(/Do NOT rewrite the instructions yourself/);
   });
@@ -123,6 +126,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
         { role: 'bot', text: 'Impulse is force times time. Can you define momentum?' },
       ],
       feedback: null,
+      toolErrors: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('DIALOGUE');
@@ -132,14 +136,14 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('omits dialogue content cleanly when transcript is an empty array', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: [], feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: [], feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('DIALOGUE');
     expect(prompt).toContain('(no transcript recorded today)');
   });
 
   test('notes transcript is unavailable when transcript is null (transcripts table not present)', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(transcript not available yet — transcripts table not present)');
   });
@@ -154,6 +158,7 @@ describe('buildTuningPrompt (pure function, no network)', () => {
         { id: 1, kind: 'ui', quote: 'the mastery chart is too small to read', paraphrase: 'Wants a bigger chart' },
         { id: 2, kind: 'ux', quote: 'I got lost switching modes', paraphrase: null },
       ],
+      toolErrors: null,
     };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('UI/UX FEEDBACK');
@@ -166,16 +171,25 @@ describe('buildTuningPrompt (pure function, no network)', () => {
   });
 
   test('omits UI/UX feedback content cleanly when feedback is an empty array', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: [] };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: [], toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('UI/UX FEEDBACK');
     expect(prompt).toContain('(no feedback recorded today)');
   });
 
   test('notes feedback is unavailable when feedback is null (feedback table not present)', () => {
-    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null };
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: null };
     const prompt = buildTuningPrompt(data);
     expect(prompt).toContain('(feedback not available yet — feedback table not present)');
+  });
+
+  test('includes unresolved Sentry issues in the bugs input', () => {
+    const data: TuningData = { date: '2026-08-10', results: [], episodes: null, transcript: null, feedback: null, toolErrors: [] };
+    const prompt = buildTuningPrompt(data, [
+      { id: '1', title: 'Realtime connection failed', count: 3, culprit: 'lib/realtime-client.ts' },
+    ]);
+    expect(prompt).toContain('SENTRY');
+    expect(prompt).toContain('Realtime connection failed (3x, lib/realtime-client.ts)');
   });
 });
 
@@ -286,5 +300,90 @@ describe('markFeedbackProposed (db write, no network)', () => {
 
     expect(() => markFeedbackProposed(db, [])).not.toThrow();
     expect(db.prepare('SELECT status FROM feedback').get()).toEqual({ status: 'new' });
+  });
+});
+
+describe('source filtering', () => {
+  function dbWithSource() {
+    const db = openDb(':memory:');
+    db.exec('ALTER TABLE results ADD COLUMN source TEXT');
+    db.exec('ALTER TABLE transcripts ADD COLUMN source TEXT');
+    db.prepare("INSERT INTO results (category_id,difficulty,correct,mode,source) VALUES ('4A',1,1,'drill','prod')").run();
+    db.prepare("INSERT INTO results (category_id,difficulty,correct,mode,source) VALUES ('4A',1,0,'drill','demo')").run();
+    db.prepare("INSERT INTO transcripts (role,text,source) VALUES ('user','real student','prod')").run();
+    db.prepare("INSERT INTO transcripts (role,text,source) VALUES ('user','bystander audio','demo')").run();
+    db.prepare("INSERT INTO transcripts (role,text,source) VALUES ('user','untagged audio',NULL)").run();
+    return db;
+  }
+
+  test('instruction-tuning inputs use prod only', () => {
+    const db = dbWithSource();
+    const data = gatherTuningData(db);
+    expect(data.results).toHaveLength(1);
+    expect(data.transcript?.map((t) => t.text)).toEqual(['real student']);
+    expect(data.transcript?.map((t) => t.text)).not.toContain('bystander audio');
+    expect(data.transcript?.map((t) => t.text)).not.toContain('untagged audio');
+    db.close();
+  });
+
+  test('still works on a db with no source column', () => {
+    const db = openDb(':memory:');
+    db.prepare("INSERT INTO results (category_id,difficulty,correct,mode) VALUES ('4A',1,1,'drill')").run();
+    expect(() => gatherTuningData(db)).not.toThrow();
+    expect(gatherTuningData(db).results).toHaveLength(1);
+    db.close();
+  });
+});
+
+describe('24-hour window', () => {
+  test('includes only timestamps from the bounded previous 24 hours', () => {
+    const db = openDb(':memory:');
+    const insert = db.prepare(
+      "INSERT INTO results (ts,category_id,difficulty,correct,mode) VALUES (datetime('now',? ),?,1,1,'drill')"
+    );
+    insert.run('+1 hour', 'future');
+    insert.run('-1 hour', 'recent');
+    insert.run('-23 hours', 'near-boundary');
+    insert.run('-25 hours', 'too-old');
+
+    expect(gatherTuningData(db).results.map((row) => row.categoryId).sort()).toEqual([
+      'near-boundary',
+      'recent',
+    ]);
+    db.close();
+  });
+
+  test('includes a row stamped 3 hours ago even when that is the previous UTC day', () => {
+    const db = openDb(':memory:');
+    db.prepare(
+      "INSERT INTO results (ts,category_id,difficulty,correct,mode) VALUES (datetime('now','-3 hours'),'4A',1,1,'drill')"
+    ).run();
+    expect(gatherTuningData(db).results).toHaveLength(1);
+    db.close();
+  });
+
+  test('excludes a row older than 24 hours', () => {
+    const db = openDb(':memory:');
+    db.prepare(
+      "INSERT INTO results (ts,category_id,difficulty,correct,mode) VALUES (datetime('now','-30 hours'),'4A',1,1,'drill')"
+    ).run();
+    expect(gatherTuningData(db).results).toHaveLength(0);
+    db.close();
+  });
+});
+
+describe('tool errors in the prompt', () => {
+  test('bugs section draws from both sources', () => {
+    // openDb() creates tool_errors (it ships in lib/db.ts); only the source column is added
+    // by the combine step, so that is all this fixture needs to add.
+    const db = openDb(':memory:');
+    db.exec('ALTER TABLE tool_errors ADD COLUMN source TEXT');
+    db.prepare("INSERT INTO tool_errors (tool,message,arg_keys,source) VALUES ('render_view','Too many rows','view','prod')").run();
+    db.prepare("INSERT INTO tool_errors (tool,message,arg_keys,source) VALUES ('render_view','Too many rows','view','demo')").run();
+
+    const prompt = buildTuningPrompt(gatherTuningData(db));
+    expect(prompt).toContain('render_view');
+    expect(prompt).toContain('Too many rows');
+    db.close();
   });
 });

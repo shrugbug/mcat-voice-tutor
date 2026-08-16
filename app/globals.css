@@ -510,6 +510,18 @@ a {
   opacity: 0.8;
 }
 
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid rgba(128, 128, 128, 0.3);
+}
+
+.composer input {
+  flex: 1;
+  min-width: 0;
+}
+
 /* --- Pre-connect landing --- */
 
 .landing {
@@ -697,4 +709,14 @@ a {
 .landing *:focus-visible {
   outline: 2px solid var(--eraser);
   outline-offset: 2px;
+}
+
+/* Question stem shown above the answer options (added 2026-08-11: the stem was spoken but
+   never displayed, so a student who missed it aloud had nothing to re-read). */
+.answer-grid__stem {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  max-width: 100%;
+  overflow-wrap: break-word;
 }

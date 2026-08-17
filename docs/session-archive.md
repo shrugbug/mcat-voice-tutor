@@ -26,3 +26,38 @@
   Sentry issue-fetch) shipped in PRs #1-#7 on 2026-08-11. `docs/tuning/proposal-2026-08-11.md` is
   the successor proposal generated after WS-1 landed — check whether it's been applied before
   resuming `docs/tuning/proposal-2026-08-10.md`, which remains shelved.
+
+### 2026-08-16
+- Completed: read-only research session documenting the Realtime-voice implementation
+  (provider/transport/architecture/mobile-support-status/config/cost/reuse) for porting to a
+  separate web-embedded voice-agent MVP.
+- Completed: pulled the 7 commits this checkout was missing (PRs #1-#7 from 2026-08-11) and
+  merged cleanly, resolving a real conflict in `CLAUDE.md`/`docs/session-archive.md` (two
+  divergent session logs — archived correctly, preserved the shelved-proposal warning above).
+- Completed: reconciled pre-existing uncommitted local Sentry work against what PR #7 had
+  already shipped. Kept PR #7's tested, PII-scrubbed `instrumentation.ts`/`instrumentation-client.ts`
+  as-is; added only what was missing — `next.config.ts` wrapped with `withSentryConfig`
+  (build-time source-map/release upload via a new `SENTRY_CI_TOKEN`, separate from the nightly
+  reader's `SENTRY_AUTH_TOKEN`), `app/global-error.tsx`, `SENTRY-VPS-SETUP.sh`.
+- Completed: codex review of that reconciliation caught two real bugs, both fixed — (P1)
+  `next.config.ts` fell back to the read-only `SENTRY_AUTH_TOKEN` when `SENTRY_CI_TOKEN` was
+  unset, which would have thrown on every build once both vars existed (they now do) instead of
+  no-opping as intended; (P2) `SENTRY-VPS-SETUP.sh`'s `append_if_missing` silently no-op'd token
+  rotation on an already-configured `.env`, reporting success regardless.
+- Completed: deployed to the VPS. Found it already had `SENTRY_CI_TOKEN` provisioned (an Aug 11
+  session had deployed the same pattern there directly, uncommitted, with the same P1 bug —
+  never triggered live since the token was always present) — discarded those uncommitted edits,
+  pulled the reviewed commits, rebuilt, restarted `mcat` + `mcat-demo`. Verified: both `online`,
+  `200` on localhost, `401` (correct basic-auth) on the public HTTPS domain, error-capture
+  pipeline confirmed alive via a prior smoke-test event visible in the Sentry API.
+- Completed: found and fixed a real bug the deploy verification surfaced — `SENTRY_RELEASE`/
+  `NEXT_PUBLIC_SENTRY_RELEASE` were hardcoded on the VPS to a stale value (`mcat-666536b`, from
+  the Aug 11 ad-hoc setup), overriding the Sentry build plugin's per-commit auto-detection, so
+  every build deduped against that stale release and no new source-map upload ever registered.
+  Removed the pinned vars (backed up `.env` first), rebuilt, confirmed via the Sentry API that a
+  new release now uploads correctly under the current commit SHA.
+- Note: the local sandbox's `npm run build` failure (Google-Fonts-under-Turbopack) is confirmed
+  sandbox-only — the VPS build succeeded cleanly with the same code. Not a real product bug.
+- Policy: received a Codex-delegation directive via Control broadcast (quota conservation) —
+  saved to auto memory (`feedback-delegate-code-to-codex.md`). Route self-contained
+  code-writing/review subtasks to Codex going forward, until further notice.

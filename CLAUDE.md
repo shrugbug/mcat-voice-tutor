@@ -45,8 +45,28 @@ session/event handling.
 ## Session Log
 
 ### 2026-08-16
-- Completed: read-only research session documenting the Realtime-voice implementation (provider/transport/architecture/mobile-support-status/config/cost/reuse) for porting to a separate web-embedded voice-agent MVP.
-- Completed: pulled the 7 commits this checkout was missing (PRs #1-#7 from 2026-08-11 sessions — tuning-loop spec, AAMC score import, hotfix, tuner VPS data + Sentry issue fetch, ops runbook, corpus licensing analysis, LaTeX/tool-error/Sentry) and merged cleanly.
-- Completed: reconciled the pre-existing uncommitted local Sentry work against what PR #7 had already shipped. PR #7's `instrumentation.ts`/`instrumentation-client.ts` already had PII scrubbing (`lib/sentry-scrub.ts`) and prod/demo instance tagging, tested — kept those as-is rather than overwriting with the older, unscrubbed local draft. Added only the genuinely missing pieces: `next.config.ts` wrapped with `withSentryConfig` for build-time source-map/release upload (using a new `SENTRY_CI_TOKEN`, separate from the nightly reader's `SENTRY_AUTH_TOKEN`), `app/global-error.tsx` root error boundary, and `SENTRY-VPS-SETUP.sh` for setting the new token on the VPS. 318 tests + typecheck pass; `npm run build` hits a pre-existing Google-Fonts-under-Turbopack failure unrelated to this change (verified by isolating: fails identically with `next.config.ts` reverted to the unwrapped PR #7 version) — not caused by this session, not yet root-caused.
-- Reminder carried forward from the pulled history: `docs/tuning/proposal-2026-08-10.md` is **shelved, not pending** — over-fit to 5 synthetic attempts, do not apply, do not resume without asking. `docs/tuning/proposal-2026-08-11.md` is the successor generated after WS-1 landed and is the one worth checking/applying.
-- Next: run `SENTRY-VPS-SETUP.sh` to set `SENTRY_CI_TOKEN`/`SENTRY_ORG`/`SENTRY_PROJECT` on the VPS, then rebuild+restart so source-map upload takes effect; root-cause the pre-existing `npm run build` Turbopack/Google-Fonts failure (blocks local production builds, VPS build path not yet re-verified after the merge); user buys mcat.coach then DNS+cert; Aryan's section scores -> scored seed (may already be unblocked by the merged AAMC-import PR); 8 skill-audit flags; check whether `docs/tuning/proposal-2026-08-11.md` has been applied; unmerged worktree at mcat-view-state (`feat/persisted-view-state`, design doc only, unimplemented) still needs building.
+- Completed: read-only voice-implementation research (for a separate MVP); pulled the 7 commits
+  this checkout was missing (PRs #1-#7 from 2026-08-11); reconciled pre-existing uncommitted
+  local Sentry work against PR #7's already-shipped, PII-scrubbed instrumentation, adding only
+  what was missing (`next.config.ts` source-map upload via `withSentryConfig`, `app/global-error.tsx`,
+  `SENTRY-VPS-SETUP.sh`). Codex review of that work caught and fixed two real bugs (P1: bad
+  auth-token fallback that would break builds; P2: token-rotation no-op in the setup script).
+- Completed: deployed to the VPS (pulled, rebuilt, restarted `mcat`+`mcat-demo`, verified healthy
+  — localhost 200s, public HTTPS 401 basic-auth, error-capture pipeline confirmed alive via
+  Sentry API). Found and discarded a stale, buggy uncommitted Sentry setup already live on the
+  VPS from an Aug 11 session (same P1 bug, never triggered live). Found and fixed a second real
+  bug the deploy surfaced: `SENTRY_RELEASE`/`NEXT_PUBLIC_SENTRY_RELEASE` were hardcoded/stale on
+  the VPS, silently blocking every source-map upload since Aug 11 — removed them, confirmed via
+  the Sentry API that auto-detected per-commit releases now upload correctly. Full narrative in
+  `docs/session-archive.md`.
+- Note: the local sandbox's `npm run build` failure (Google Fonts / Turbopack) is confirmed
+  sandbox-only — the VPS build succeeds cleanly on the same code. Not a real product bug.
+- Policy: received a Codex-delegation directive (quota conservation, until further notice) —
+  route self-contained code-writing/review subtasks to Codex going forward; saved to auto memory.
+- Reminder carried forward: `docs/tuning/proposal-2026-08-10.md` is **shelved, not pending** —
+  do not apply, do not resume without asking. `docs/tuning/proposal-2026-08-11.md` is the
+  successor and the one worth checking/applying.
+- Next: user buys mcat.coach then DNS+cert; Aryan's section scores -> scored seed (may already
+  be unblocked by the merged AAMC-import PR); 8 skill-audit flags; check whether
+  `docs/tuning/proposal-2026-08-11.md` has been applied; unmerged worktree at mcat-view-state
+  (`feat/persisted-view-state`, design doc only, unimplemented) still needs building.

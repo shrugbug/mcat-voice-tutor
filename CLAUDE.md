@@ -44,29 +44,20 @@ session/event handling.
 
 ## Session Log
 
-### 2026-08-16
-- Completed: read-only voice-implementation research (for a separate MVP); pulled the 7 commits
-  this checkout was missing (PRs #1-#7 from 2026-08-11); reconciled pre-existing uncommitted
-  local Sentry work against PR #7's already-shipped, PII-scrubbed instrumentation, adding only
-  what was missing (`next.config.ts` source-map upload via `withSentryConfig`, `app/global-error.tsx`,
-  `SENTRY-VPS-SETUP.sh`). Codex review of that work caught and fixed two real bugs (P1: bad
-  auth-token fallback that would break builds; P2: token-rotation no-op in the setup script).
-- Completed: deployed to the VPS (pulled, rebuilt, restarted `mcat`+`mcat-demo`, verified healthy
-  — localhost 200s, public HTTPS 401 basic-auth, error-capture pipeline confirmed alive via
-  Sentry API). Found and discarded a stale, buggy uncommitted Sentry setup already live on the
-  VPS from an Aug 11 session (same P1 bug, never triggered live). Found and fixed a second real
-  bug the deploy surfaced: `SENTRY_RELEASE`/`NEXT_PUBLIC_SENTRY_RELEASE` were hardcoded/stale on
-  the VPS, silently blocking every source-map upload since Aug 11 — removed them, confirmed via
-  the Sentry API that auto-detected per-commit releases now upload correctly. Full narrative in
-  `docs/session-archive.md`.
-- Note: the local sandbox's `npm run build` failure (Google Fonts / Turbopack) is confirmed
-  sandbox-only — the VPS build succeeds cleanly on the same code. Not a real product bug.
-- Policy: received a Codex-delegation directive (quota conservation, until further notice) —
-  route self-contained code-writing/review subtasks to Codex going forward; saved to auto memory.
-- Reminder carried forward: `docs/tuning/proposal-2026-08-10.md` is **shelved, not pending** —
-  do not apply, do not resume without asking. `docs/tuning/proposal-2026-08-11.md` is the
-  successor and the one worth checking/applying.
-- Next: user buys mcat.coach then DNS+cert; Aryan's section scores -> scored seed (may already
-  be unblocked by the merged AAMC-import PR); 8 skill-audit flags; check whether
-  `docs/tuning/proposal-2026-08-11.md` has been applied; unmerged worktree at mcat-view-state
-  (`feat/persisted-view-state`, design doc only, unimplemented) still needs building.
+### 2026-08-24
+- Completed: orientation only — no code changes. Verified: `main` clean/in-sync, 0 open
+  issues/PRs, no Codex deferrals since 08-16. Both remote branches are behind main and their
+  only unique content is docs: `feature/multi-user-launch` -> `docs/specs-multiuser/` (4 spec
+  docs, not in main); `feat/persisted-view-state` (worktree `../mcat-view-state`) -> design doc
+  only, still unimplemented. `docs/tuning/proposal-2026-08-11.md` NOT applied (0 keyword hits
+  in `lib/instructions.ts`); local nightly-tune shows 0 attempts/day since 08-16 (local DB only,
+  says nothing about VPS usage). `proposal-2026-08-10.md` remains **shelved, do not apply**.
+- History rewrite (by control, Vishal's decision): all commits on main + both feature branches
+  now authored by Shreya Sachdev <shreya.sachdev@gmail.com>; old history at tag
+  `backup/pre-author-rewrite-2026-08-24`. Consequences: the VPS clone needs
+  `git fetch && git reset --hard origin/main` on next deploy (non-fast-forward), and Sentry
+  releases (SHA-derived) will restart under new IDs. Local git config is still Vishal — set
+  `git config user.name/user.email` in this repo if future commits should match.
+- Next: buy mcat.coach -> DNS + cert; Aryan's section scores -> scored seed; 8 skill-audit
+  flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
+  whether to merge `docs/specs-multiuser/` into main.

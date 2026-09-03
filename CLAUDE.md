@@ -42,7 +42,30 @@ session/event handling.
 - Live smoke test (`npm run acceptance`) and the live voice checklist
   (`docs/superpowers/plans/acceptance-checklist.md`) with the user, mic-enabled.
 
+## Deployment
+
+VPS (`ssh vps`, `/root/repos/mcat`, pm2 apps `mcat` + `mcat-demo`). Every push to `main` auto-deploys via
+`.github/workflows/deploy.yml`; manual fallback `ssh vps mcat-deploy`.
+Details and deploy-user setup: `docs/operations.md` section 1.
+
 ## Session Log
+
+### 2026-09-02
+- Completed: VPS deploy access for Shreya. Created `/usr/local/bin/mcat-deploy` (fetch, reset
+  to origin/main, install, build, pm2 restart, health check, log) and Linux user `shreya` with
+  sudo limited to that script and `pm2 status|logs|restart` for the mcat apps. Ran the script
+  once as root: VPS moved from pre-rewrite `c9edd24` to `0dd58a2` (docs-only diff), both apps
+  online, ports 3007/3008 return 200. This closes the post-rewrite `reset --hard` item.
+  Shreya is `shrugbug` on GitHub with Write on the repo (main is unprotected). Runbook
+  corrected: demo has had basic auth since 08-10.
+- Also: `.github/workflows/deploy.yml` auto-deploys on push to main via a forced-command
+  `deployer` key on the VPS. Repo transferred to `shrugbug/mcat` (pending her acceptance).
+- Blocked on: Shreya's SSH public key (only needed for manual deploys now). Note drafted at
+  `docs/drafts/2026-09-02-shreya-vps-access.txt`; append the key with the one-liner in
+  `docs/operations.md`.
+- Next (unchanged): mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags;
+  decide `proposal-2026-08-11.md`; build `feat/persisted-view-state`; `docs/specs-multiuser/`.
+
 
 ### 2026-08-24
 - Completed: orientation only — no code changes. Verified: `main` clean/in-sync, 0 open

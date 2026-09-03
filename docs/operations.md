@@ -18,7 +18,7 @@ Both instances live on the same VPS checkout at `/root/repos/mcat` (ssh alias `v
 | `pm2` app | `mcat` | `mcat-demo` |
 | Port | `3007` | `3008` |
 | Database | `data/mcat.db` | `data/demo.db` |
-| Auth / audience | Basic auth, single student | Public, anonymous |
+| Auth / audience | Basic auth, single student | Basic auth (since 2026-08-10), credentials in `DEMO_CREDENTIALS.txt` on the VPS |
 | Personalization | `STUDENT_NAME`/`STUDENT_FILE_LABEL` in `app/page.tsx` (`Aryan`) | Generic greeting (`future doctor`) via `window.location.hostname` |
 
 Common VPS commands:
@@ -31,18 +31,37 @@ pm2 logs mcat-demo
 pm2 restart mcat mcat-demo
 ```
 
-Deploy flow (from the end-of-plan deployment note in `docs/superpowers/plans/2026-08-11-tuning-loop-and-interfaces.md`):
+Deploy flow (2026-09-02 onward): a single script on the VPS, `/usr/local/bin/mcat-deploy`, does
+fetch, `git reset --hard origin/main` (idempotent, survives history rewrites), `npm install`,
+`npm run build`, `pm2 restart mcat mcat-demo`, then curls both ports and appends a line to
+`/var/log/mcat-deploy.log`. It never touches `data/*.db` or `.env`.
 
 ```sh
-ssh vps
-cd /root/repos/mcat
-git pull
-npm install
-npm run build
-pm2 restart mcat mcat-demo
+ssh vps mcat-deploy                # as root
+ssh vps sudo mcat-deploy           # as a deploy user
+ssh vps sudo mcat-deploy origin/some-branch   # deploy a non-main ref
 ```
 
-> **Production data:** `pm2 restart` is non-destructive. `git pull`, `npm install`, and `npm run build` are non-destructive for the database but do change the running build. Always verify `pm2 status` after a deploy.
+Auto-deploy: `.github/workflows/deploy.yml` runs on every push to `main` (and on manual
+dispatch). It SSHes as `deployer@$VPS_HOST` with the `VPS_SSH_KEY` repo secret; that key is a
+forced command in `/home/deployer/.ssh/authorized_keys`, so it can only run `sudo mcat-deploy`
+(`/etc/sudoers.d/deployer-mcat`). Secrets: `VPS_SSH_KEY`, `VPS_HOST`, `VPS_KNOWN_HOSTS`. The
+private key exists only in the GitHub secret; to rotate, `ssh-keygen -t ed25519`, replace the
+key line in that `authorized_keys`, and `gh secret set VPS_SSH_KEY < newkey`.
+
+Manual deploy users: `shreya` (created 2026-09-02) is a normal Linux user whose sudo is limited by
+`/etc/sudoers.d/shreya-mcat-deploy` to `mcat-deploy` and `pm2 status|logs|restart` on the two
+mcat apps. No shell access to `/root`, other pm2 apps, or Postgres. To add a key:
+`ssh vps 'echo "<pubkey>" >> /home/shreya/.ssh/authorized_keys'`. Same pattern for any future
+collaborator: `useradd -m`, copy the sudoers file with the name changed.
+
+> **Production data:** `pm2 restart` is non-destructive. The reset/install/build steps are
+> non-destructive for the database but do change the running build. `mcat-deploy` prints
+> `pm2 status` and the two health codes at the end; read them.
+
+Both vhosts sit behind nginx basic auth (`/etc/nginx/.htpasswd-mcat`, `.htpasswd-mcatdemo`,
+since 2026-08-10), so a public `curl` returns 401 even when healthy. Health-check the localhost
+ports instead, as the script does.
 
 The exact `pm2` start command / ecosystem file used on the VPS is **unverified** — it is not in the repo. The app is expected to use `PORT` and `MCAT_DB` env vars per process.
 

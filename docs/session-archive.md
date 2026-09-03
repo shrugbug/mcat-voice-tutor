@@ -61,3 +61,21 @@
 - Policy: received a Codex-delegation directive via Control broadcast (quota conservation) —
   saved to auto memory (`feedback-delegate-code-to-codex.md`). Route self-contained
   code-writing/review subtasks to Codex going forward, until further notice.
+
+### 2026-08-24
+- Completed: orientation only — no code changes. Verified: `main` clean/in-sync, 0 open
+  issues/PRs, no Codex deferrals since 08-16. Both remote branches are behind main and their
+  only unique content is docs: `feature/multi-user-launch` -> `docs/specs-multiuser/` (4 spec
+  docs, not in main); `feat/persisted-view-state` (worktree `../mcat-view-state`) -> design doc
+  only, still unimplemented. `docs/tuning/proposal-2026-08-11.md` NOT applied (0 keyword hits
+  in `lib/instructions.ts`); local nightly-tune shows 0 attempts/day since 08-16 (local DB only,
+  says nothing about VPS usage). `proposal-2026-08-10.md` remains **shelved, do not apply**.
+- History rewrite (by control, Vishal's decision): all commits on main + both feature branches
+  now authored by Shreya Sachdev <shreya.sachdev@gmail.com>; old history at tag
+  `backup/pre-author-rewrite-2026-08-24`. Consequences: the VPS clone needs
+  `git fetch && git reset --hard origin/main` on next deploy (non-fast-forward), and Sentry
+  releases (SHA-derived) will restart under new IDs. Local git config is still Vishal — set
+  `git config user.name/user.email` in this repo if future commits should match.
+- Next: buy mcat.coach -> DNS + cert; Aryan's section scores -> scored seed; 8 skill-audit
+  flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
+  whether to merge `docs/specs-multiuser/` into main.

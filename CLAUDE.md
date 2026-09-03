@@ -51,37 +51,20 @@ Details and deploy-user setup: `docs/operations.md` section 1.
 ## Session Log
 
 ### 2026-09-02
-- Completed: VPS deploy access for Shreya. Created `/usr/local/bin/mcat-deploy` (fetch, reset
-  to origin/main, install, build, pm2 restart, health check, log) and Linux user `shreya` with
-  sudo limited to that script and `pm2 status|logs|restart` for the mcat apps. Ran the script
-  once as root: VPS moved from pre-rewrite `c9edd24` to `0dd58a2` (docs-only diff), both apps
-  online, ports 3007/3008 return 200. This closes the post-rewrite `reset --hard` item.
-  Shreya is `shrugbug` on GitHub with Write on the repo (main is unprotected). Runbook
-  corrected: demo has had basic auth since 08-10.
-- Also: `.github/workflows/deploy.yml` auto-deploys on push to main via a forced-command
-  `deployer` key on the VPS. Repo transferred to `shrugbug/mcat` (pending her acceptance).
-- Shreya's SSH key installed for user `shreya` (fingerprint SHA256:WBriFQ...); untested from
-  her side as of 09-02. Note drafted at
-  `docs/drafts/2026-09-02-shreya-vps-access.txt`; append the key with the one-liner in
-  `docs/operations.md`.
-- Next (unchanged): mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags;
-  decide `proposal-2026-08-11.md`; build `feat/persisted-view-state`; `docs/specs-multiuser/`.
-
-
-### 2026-08-24
-- Completed: orientation only — no code changes. Verified: `main` clean/in-sync, 0 open
-  issues/PRs, no Codex deferrals since 08-16. Both remote branches are behind main and their
-  only unique content is docs: `feature/multi-user-launch` -> `docs/specs-multiuser/` (4 spec
-  docs, not in main); `feat/persisted-view-state` (worktree `../mcat-view-state`) -> design doc
-  only, still unimplemented. `docs/tuning/proposal-2026-08-11.md` NOT applied (0 keyword hits
-  in `lib/instructions.ts`); local nightly-tune shows 0 attempts/day since 08-16 (local DB only,
-  says nothing about VPS usage). `proposal-2026-08-10.md` remains **shelved, do not apply**.
-- History rewrite (by control, Vishal's decision): all commits on main + both feature branches
-  now authored by Shreya Sachdev <shreya.sachdev@gmail.com>; old history at tag
-  `backup/pre-author-rewrite-2026-08-24`. Consequences: the VPS clone needs
-  `git fetch && git reset --hard origin/main` on next deploy (non-fast-forward), and Sentry
-  releases (SHA-derived) will restart under new IDs. Local git config is still Vishal — set
-  `git config user.name/user.email` in this repo if future commits should match.
-- Next: buy mcat.coach -> DNS + cert; Aryan's section scores -> scored seed; 8 skill-audit
-  flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
-  whether to merge `docs/specs-multiuser/` into main.
+- Completed: repo transferred to `shrugbug/mcat` (Shreya accepted same day; Vishal now has
+  Write; local + VPS remotes repointed). Auto-deploy: `.github/workflows/deploy.yml` runs on
+  every push to `main`, SSHes as `deployer` with a forced-command key that can only run
+  `/usr/local/bin/mcat-deploy` (fetch, reset to origin/main, install, build, pm2 restart,
+  health check, `/var/log/mcat-deploy.log`). Verified on three pushes; one runner-side SSH
+  timeout led to a 3x connect retry in the workflow. Secrets survived the transfer. Linux user
+  `shreya` (sudo limited to mcat-deploy + mcat pm2 cmds) has her key installed, untested from
+  her side. VPS moved off the pre-rewrite SHA, closing the `reset --hard` item. Runbook
+  corrected: demo has had basic auth since 08-10. Note to her:
+  `docs/drafts/2026-09-02-shreya-vps-access.txt` (not yet sent as of wrap-up).
+- Declined for now: a staging instance for branch previews (second checkout, port 3009,
+  nginx vhost + cert, manual-dispatch workflow). She experiments locally with her own OpenAI
+  key. Revisit if she asks for a shared preview URL.
+- Next: mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags; decide
+  `proposal-2026-08-11.md`; build `feat/persisted-view-state` (19 commits behind main);
+  `docs/specs-multiuser/`. Main is unprotected and every push rebuilds prod: consider a
+  build check on PRs.

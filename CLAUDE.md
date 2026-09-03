@@ -60,7 +60,8 @@ Details and deploy-user setup: `docs/operations.md` section 1.
   corrected: demo has had basic auth since 08-10.
 - Also: `.github/workflows/deploy.yml` auto-deploys on push to main via a forced-command
   `deployer` key on the VPS. Repo transferred to `shrugbug/mcat` (pending her acceptance).
-- Blocked on: Shreya's SSH public key (only needed for manual deploys now). Note drafted at
+- Shreya's SSH key installed for user `shreya` (fingerprint SHA256:WBriFQ...); untested from
+  her side as of 09-02. Note drafted at
   `docs/drafts/2026-09-02-shreya-vps-access.txt`; append the key with the one-liner in
   `docs/operations.md`.
 - Next (unchanged): mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags;

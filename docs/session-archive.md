@@ -79,3 +79,22 @@
 - Next: buy mcat.coach -> DNS + cert; Aryan's section scores -> scored seed; 8 skill-audit
   flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
   whether to merge `docs/specs-multiuser/` into main.
+
+### 2026-09-02
+- Completed: repo transferred to `shrugbug/mcat` (Shreya accepted same day; Vishal now has
+  Write; local + VPS remotes repointed). Auto-deploy: `.github/workflows/deploy.yml` runs on
+  every push to `main`, SSHes as `deployer` with a forced-command key that can only run
+  `/usr/local/bin/mcat-deploy` (fetch, reset to origin/main, install, build, pm2 restart,
+  health check, `/var/log/mcat-deploy.log`). Verified on three pushes; one runner-side SSH
+  timeout led to a 3x connect retry in the workflow. Secrets survived the transfer. Linux user
+  `shreya` (sudo limited to mcat-deploy + mcat pm2 cmds) has her key installed, untested from
+  her side. VPS moved off the pre-rewrite SHA, closing the `reset --hard` item. Runbook
+  corrected: demo has had basic auth since 08-10. Note to her:
+  `docs/drafts/2026-09-02-shreya-vps-access.txt` (not yet sent as of wrap-up).
+- Declined for now: a staging instance for branch previews (second checkout, port 3009,
+  nginx vhost + cert, manual-dispatch workflow). She experiments locally with her own OpenAI
+  key. Revisit if she asks for a shared preview URL.
+- Next: mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags; decide
+  `proposal-2026-08-11.md`; build `feat/persisted-view-state` (19 commits behind main);
+  `docs/specs-multiuser/`. Main is unprotected and every push rebuilds prod: consider a
+  build check on PRs.

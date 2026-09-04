@@ -50,21 +50,19 @@ Details and deploy-user setup: `docs/operations.md` section 1.
 
 ## Session Log
 
-### 2026-09-02
-- Completed: repo transferred to `shrugbug/mcat` (Shreya accepted same day; Vishal now has
-  Write; local + VPS remotes repointed). Auto-deploy: `.github/workflows/deploy.yml` runs on
-  every push to `main`, SSHes as `deployer` with a forced-command key that can only run
-  `/usr/local/bin/mcat-deploy` (fetch, reset to origin/main, install, build, pm2 restart,
-  health check, `/var/log/mcat-deploy.log`). Verified on three pushes; one runner-side SSH
-  timeout led to a 3x connect retry in the workflow. Secrets survived the transfer. Linux user
-  `shreya` (sudo limited to mcat-deploy + mcat pm2 cmds) has her key installed, untested from
-  her side. VPS moved off the pre-rewrite SHA, closing the `reset --hard` item. Runbook
-  corrected: demo has had basic auth since 08-10. Note to her:
-  `docs/drafts/2026-09-02-shreya-vps-access.txt` (not yet sent as of wrap-up).
-- Declined for now: a staging instance for branch previews (second checkout, port 3009,
-  nginx vhost + cert, manual-dispatch workflow). She experiments locally with her own OpenAI
-  key. Revisit if she asks for a shared preview URL.
-- Next: mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags; decide
-  `proposal-2026-08-11.md`; build `feat/persisted-view-state` (19 commits behind main);
-  `docs/specs-multiuser/`. Main is unprotected and every push rebuilds prod: consider a
-  build check on PRs.
+### 2026-09-04
+- Completed: orientation only — no code changes, nothing to commit. Resolved Shreya's question
+  about the `mcat.illinihunt.org` (prod) basic-auth password: found on VPS at
+  `/root/repos/mcat/the prod credentials file` (user `aryan`), confirmed live with a `401` on
+  the public URL. Shreya cannot read this herself — her sudo grant has no `/root` shell access,
+  only `mcat-deploy` + mcat pm2 commands. `docs/operations.md` §1 documents where the *demo*
+  credentials live (`DEMO_CREDENTIALS.txt`) but never mentions `the prod credentials file` for
+  prod; offered to add that line, not yet done pending Vishal's go-ahead. `feat/persisted-view-state`
+  worktree still clean/unimplemented, now 20 commits behind main (was 19 on 09-02). No open
+  GitHub issues/PRs. No Codex activity on this repo since 09-02.
+- Next: decide whether to (a) document `the prod credentials file` in `docs/operations.md`,
+  (b) hand Shreya the prod password directly since she has no path to read it herself; send
+  `docs/drafts/2026-09-02-shreya-vps-access.txt` if still unsent; mcat.coach DNS + cert; Aryan's
+  scores -> scored seed; 8 skill-audit flags; decide `proposal-2026-08-11.md`; build
+  `feat/persisted-view-state` (20 behind main — rebase before starting); `docs/specs-multiuser/`.
+  Main is unprotected and every push rebuilds prod: consider a build check on PRs.

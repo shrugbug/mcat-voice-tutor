@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ZodError } from 'zod';
 import type Database from 'better-sqlite3';
 import { openDb } from '../lib/db';
@@ -81,6 +81,24 @@ describe('dispatchTool', () => {
     await expect(
       dispatchTool(db, 'recall_similar_mistakes', { query: 'kinematics', k: 6 })
     ).rejects.toBeInstanceOf(ZodError);
+  });
+
+  test.each([
+    ['record_result note', 'record_result', { categoryId: '4A', difficulty: 1, correct: true, mode: 'drill', note: 'x'.repeat(2001) }],
+    ['record_episode stem', 'record_episode', { categoryId: '4A', stem: 'x'.repeat(8001), options: ['A', 'B', 'C', 'D'], correctIndex: 0, chosenIndex: 1 }],
+    ['recall query', 'recall_similar_mistakes', { query: 'x'.repeat(4001) }],
+    ['material query', 'search_materials', { query: 'x'.repeat(4001) }],
+    ['material result count', 'search_materials', { query: 'kinematics', k: 6 }],
+    ['feedback paraphrase', 'record_feedback', { kind: 'ui', quote: 'short', paraphrase: 'x'.repeat(2001) }],
+    ['session summary', 'end_session_summary', { mode: 'drill', summary: 'x'.repeat(8001), focusNext: 'kinematics' }],
+  ])('rejects oversized or excessive %s input', async (_label, name, args) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network should not be called'));
+    try {
+      await expect(dispatchTool(db, name, args)).rejects.toBeInstanceOf(ZodError);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   test('recallSimilarMistakes ranks stored episodes by cosine similarity and omits episodes without embeddings', () => {

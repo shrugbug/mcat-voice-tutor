@@ -107,4 +107,19 @@ describe('handleToolRequest error sanitization', () => {
     await expect(res.json()).resolves.toEqual({ error: 'Too many tool requests' });
     expect(consoleErrorSpy).not.toHaveBeenCalled();
   });
+
+  test('rejects an oversized tool name without logging the supplied value', async () => {
+    const suppliedName = `tool-${'x'.repeat(65)}`;
+    const req = new Request('http://localhost/api/tool', {
+      method: 'POST',
+      body: JSON.stringify({ name: suppliedName, args: {} }),
+    });
+
+    const res = await handleToolRequest(db, req);
+    const body = (await res.json()) as { error: string };
+
+    expect(body.error).toBe('Invalid request');
+    expect(JSON.stringify(body)).not.toContain(suppliedName);
+    expect(consoleErrorSpy.mock.calls.flat().join(' ')).not.toContain(suppliedName);
+  });
 });

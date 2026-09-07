@@ -8,7 +8,7 @@ import { createFixedWindowRateLimit, type RateLimitCheck } from '@/lib/rate-limi
 export const dynamic = 'force-dynamic';
 
 const requestSchema = z.strictObject({
-  name: z.string(),
+  name: z.string().max(64),
   args: z.unknown(),
 });
 const checkToolRateLimit = createFixedWindowRateLimit(30, 60_000);
@@ -32,9 +32,9 @@ export async function handleToolRequest(
   try {
     ({ name, args } = requestSchema.parse(await request.json()));
   } catch (error) {
-    const { logMessage, responseMessage } = sanitizeToolError(error, name, args);
+    const { logMessage } = sanitizeToolError(error, name, args);
     console.error(`[tool] ${name} request rejected: ${logMessage}`);
-    return Response.json({ error: responseMessage });
+    return Response.json({ error: 'Invalid request' });
   }
 
   try {

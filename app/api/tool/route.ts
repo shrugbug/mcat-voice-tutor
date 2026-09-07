@@ -3,7 +3,9 @@ import { openDb } from '@/lib/db';
 import type { DB } from '@/lib/db';
 import { dispatchTool } from '@/lib/tools';
 import { argKeys, recordToolError, sanitizeToolError } from '@/lib/tool-errors';
-import { createFixedWindowRateLimit, type RateLimitCheck } from '@/lib/rate-limit';
+import { createFixedWindowRateLimit, rateLimitSetting, type RateLimitCheck } from '@/lib/rate-limit';
+
+import { toolClient } from '@/lib/client-identity';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,14 +13,14 @@ const requestSchema = z.strictObject({
   name: z.string().max(64),
   args: z.unknown(),
 });
-const checkToolRateLimit = createFixedWindowRateLimit(30, 60_000);
+const checkToolRateLimit = createFixedWindowRateLimit(rateLimitSetting('TOOL_RATE_LIMIT', 30), 60_000);
 
 export async function handleToolRequest(
   db: DB,
   request: Request,
   checkRateLimit: RateLimitCheck = checkToolRateLimit
 ): Promise<Response> {
-  const limit = checkRateLimit();
+  const limit = checkRateLimit(toolClient(request));
   if (!limit.allowed) {
     return Response.json(
       { error: 'Too many tool requests' },

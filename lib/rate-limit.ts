@@ -1,23 +1,26 @@
 export type RateLimitResult = { allowed: boolean; retryAfterSeconds: number };
-export type RateLimitCheck = () => RateLimitResult;
+export type RateLimitCheck = (client: string) => RateLimitResult;
 
+export function rateLimitSetting(name: string, fallback: number): number {
+  const value = Number(process.env[name]);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+// Process-local; idle entries are removed on the next request after expiry.
 export function createFixedWindowRateLimit(limit: number, windowMs: number): RateLimitCheck {
-  let windowStartedAt = 0;
-  let count = 0;
-
-  return () => {
+  const windows = new Map<string, { expires: number; count: number }>();
+  return (client) => {
     const now = Date.now();
-    if (now - windowStartedAt >= windowMs) {
-      windowStartedAt = now;
-      count = 0;
+    for (const [key, entry] of windows) if (entry.expires <= now) windows.delete(key);
+    let entry = windows.get(client);
+    if (!entry) {
+      entry = { expires: now + windowMs, count: 0 };
+      windows.set(client, entry);
     }
-    if (count >= limit) {
-      return {
-        allowed: false,
-        retryAfterSeconds: Math.max(1, Math.ceil((windowStartedAt + windowMs - now) / 1000)),
-      };
+    if (entry.count >= limit) {
+      return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((entry.expires - now) / 1000)) };
     }
-    count += 1;
+    entry.count += 1;
     return { allowed: true, retryAfterSeconds: 0 };
   };
 }

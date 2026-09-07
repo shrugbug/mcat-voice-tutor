@@ -1,20 +1,22 @@
 import { z } from 'zod';
 import { EXAMINER_INSTRUCTIONS } from '@/lib/instructions';
 import { TOOL_DEFS } from '@/lib/tools';
-import { createFixedWindowRateLimit } from '@/lib/rate-limit';
+import { createFixedWindowRateLimit, rateLimitSetting } from '@/lib/rate-limit';
+
+import { clientIp, sessionCookie } from '@/lib/client-identity';
 
 export const dynamic = 'force-dynamic';
 
 const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
-const checkSessionRateLimit = createFixedWindowRateLimit(5, 10 * 60_000);
+const checkSessionRateLimit = createFixedWindowRateLimit(rateLimitSetting('SESSION_RATE_LIMIT', 10), 10 * 60_000);
 
 const clientSecretSchema = z.object({
   value: z.string(),
   expires_at: z.number(),
 });
 
-export async function GET(): Promise<Response> {
-  const limit = checkSessionRateLimit();
+export async function GET(request: Request): Promise<Response> {
+  const limit = checkSessionRateLimit(clientIp(request));
   if (!limit.allowed) {
     return Response.json(
       { error: 'Too many session requests' },
@@ -71,7 +73,7 @@ export async function GET(): Promise<Response> {
     }
 
     const { value, expires_at } = clientSecretSchema.parse(await response.json());
-    return Response.json({ value, expires_at });
+    return Response.json({ value, expires_at }, { headers: { 'Set-Cookie': sessionCookie(request), 'Cache-Control': 'no-store' } });
   } catch {
     return Response.json({ error: 'Unable to mint OpenAI client secret' }, { status: 502 });
   }

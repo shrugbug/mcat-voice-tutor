@@ -141,10 +141,13 @@ describe('generateQuestion invariant enforcement', () => {
   function stubChatCompletion(question: Record<string, unknown>) {
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
     vi.stubEnv('QUESTION_MODEL', 'gpt-5.1');
-    return vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }),
-    }));
+    return vi.fn(async (...request: Parameters<typeof fetch>) => {
+      void request;
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }),
+      };
+    });
   }
 
   test('accepts a response whose categoryId/difficulty/style match the request', async () => {

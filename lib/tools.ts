@@ -309,9 +309,8 @@ export async function dispatchTool(db: DB, name: string, args: unknown): Promise
 
     case 'record_result': {
       const result = recordResultArgsSchema.parse(args);
-      recordResult(db, result);
-      const category = getProfile(db).categories.find(({ id }) => id === result.categoryId);
-      return { ok: true, newMastery: category!.mastery };
+      const newMastery = recordResult(db, result);
+      return { ok: true, newMastery };
     }
 
     case 'record_episode': {

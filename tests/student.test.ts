@@ -56,10 +56,11 @@ describe('student model', () => {
     seedSectionScores(db, { chem_phys: 129 });
     const before = getProfile(db).categories.find((c) => c.id === '4A')!;
     expect(before.mastery).toBeCloseTo(11 / 14); // (129 - 118) / 14
-    recordResult(db, { categoryId: '4A', difficulty: 3, correct: true, mode: 'drill' });
+    const updatedMastery = recordResult(db, { categoryId: '4A', difficulty: 3, correct: true, mode: 'drill' });
     const after = getProfile(db).categories.find((c) => c.id === '4A')!;
     // 0.75*(11/14) + 0.25*(0.5 + 3/6) = 47/56
     expect(after.mastery).toBeCloseTo(47 / 56);
+    expect(updatedMastery).toBeCloseTo(47 / 56);
     expect(after.attempts).toBe(1);
   });
 

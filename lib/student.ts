@@ -185,7 +185,7 @@ export function recordEpisode(db: DB, episode: RecordEpisodeInput): void {
   );
 }
 
-export function recordResult(db: DB, r: RecordResultInput): void {
+export function recordResult(db: DB, r: RecordResultInput): number {
   const existing = db
     .prepare(`SELECT mastery, attempts, interval_days as intervalDays FROM categories WHERE id = ?`)
     .get(r.categoryId) as { mastery: number; attempts: number; intervalDays: number } | undefined;
@@ -214,6 +214,7 @@ export function recordResult(db: DB, r: RecordResultInput): void {
     ).run(nextMastery, nextIntervalDays, dueAt, r.categoryId);
   });
   record();
+  return nextMastery;
 }
 
 export function writeSessionSummary(db: DB, s: SessionSummaryInput): void {

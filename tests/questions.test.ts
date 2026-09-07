@@ -154,6 +154,8 @@ describe('generateQuestion invariant enforcement', () => {
 
     await expect(generateQuestion(requestParams)).resolves.toMatchObject({ categoryId: '5A', difficulty: 2 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<string, unknown>;
+    expect(requestBody.max_completion_tokens).toBe(4096);
   });
 
   test('retries once and throws when categoryId does not match the request', async () => {

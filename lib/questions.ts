@@ -118,6 +118,7 @@ async function requestQuestion(params: QuestionParams): Promise<unknown> {
     },
     body: JSON.stringify({
       model,
+      max_completion_tokens: 4096,
       messages: [
         { role: 'system', content: buildQuestionPrompt(params) },
         {

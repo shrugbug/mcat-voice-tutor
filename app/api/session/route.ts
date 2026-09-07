@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { EXAMINER_INSTRUCTIONS } from '@/lib/instructions';
 import { TOOL_DEFS } from '@/lib/tools';
+import { createFixedWindowRateLimit } from '@/lib/rate-limit';
 
 export const dynamic = 'force-dynamic';
 
 const CLIENT_SECRETS_URL = 'https://api.openai.com/v1/realtime/client_secrets';
+const checkSessionRateLimit = createFixedWindowRateLimit(5, 10 * 60_000);
 
 const clientSecretSchema = z.object({
   value: z.string(),
@@ -12,6 +14,14 @@ const clientSecretSchema = z.object({
 });
 
 export async function GET(): Promise<Response> {
+  const limit = checkSessionRateLimit();
+  if (!limit.allowed) {
+    return Response.json(
+      { error: 'Too many session requests' },
+      { status: 429, headers: { 'Retry-After': String(limit.retryAfterSeconds) } }
+    );
+  }
+
   const apiKey = process.env.OPENAI_API_KEY;
   const model = process.env.REALTIME_MODEL || 'gpt-realtime-2.1';
 

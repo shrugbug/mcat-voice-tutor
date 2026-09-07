@@ -1,3 +1,4 @@
+import { BodyTooLarge, readRequestJson } from '@/lib/request-json';
 import { z } from 'zod';
 import { openDb } from '@/lib/db';
 import type { DB } from '@/lib/db';
@@ -32,8 +33,9 @@ export async function handleToolRequest(
   let args: unknown = null;
 
   try {
-    ({ name, args } = requestSchema.parse(await request.json()));
+    ({ name, args } = requestSchema.parse(await readRequestJson(request)));
   } catch (error) {
+    if (error instanceof BodyTooLarge) return Response.json({ error: 'Request body too large' }, { status: 413 });
     const { logMessage } = sanitizeToolError(error, name, args);
     console.error(`[tool] ${name} request rejected: ${logMessage}`);
     return Response.json({ error: 'Invalid request' });

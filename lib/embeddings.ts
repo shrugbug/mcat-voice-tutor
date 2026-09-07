@@ -23,7 +23,7 @@ export async function embed(texts: string[]): Promise<Float32Array[]> {
       body: JSON.stringify({ model: MODEL, input: batch }),
     });
     if (!res.ok) {
-      throw new Error(`OpenAI embeddings request failed: ${res.status} ${await res.text()}`);
+      throw new Error(`OpenAI embeddings request failed: ${res.status}`);
     }
     const json = (await res.json()) as EmbeddingResponse;
     for (const item of [...json.data].sort((a, b) => a.index - b.index)) {

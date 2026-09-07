@@ -158,6 +158,24 @@ describe('generateQuestion invariant enforcement', () => {
     expect(requestBody.max_completion_tokens).toBe(4096);
   });
 
+  test('does not include a provider error body in the thrown diagnostic', async () => {
+    const sentinel = 'PRIVATE_SOURCE_TEXT_42';
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 400, text: async () => sentinel }))
+    );
+
+    let message = '';
+    try {
+      await generateQuestion(requestParams);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('400');
+    expect(message).not.toContain(sentinel);
+  });
+
   test('retries once and throws when categoryId does not match the request', async () => {
     const question = validQuestion({ categoryId: '4A', difficulty: 2, passage: null });
     const fetchMock = stubChatCompletion(question);

@@ -223,11 +223,19 @@ describe('embed', () => {
   });
 
   test('throws with the API status when the request fails', async () => {
+    const sentinel = 'PRIVATE_EMBEDDING_INPUT_42';
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => ({ ok: false, status: 429, text: async () => 'rate limited' }))
+      vi.fn(async () => ({ ok: false, status: 429, text: async () => sentinel }))
     );
-    await expect(embed(['hi'])).rejects.toThrow(/429/);
+    let message = '';
+    try {
+      await embed(['hi']);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('429');
+    expect(message).not.toContain(sentinel);
   });
 });

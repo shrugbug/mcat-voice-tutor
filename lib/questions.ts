@@ -138,7 +138,7 @@ async function requestQuestion(params: QuestionParams): Promise<unknown> {
   });
 
   if (!response.ok) {
-    throw new Error(`OpenAI question request failed: ${response.status} ${await response.text()}`);
+    throw new Error(`OpenAI question request failed: ${response.status}`);
   }
 
   const body = (await response.json()) as ChatCompletionResponse;

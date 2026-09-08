@@ -1,3 +1,4 @@
+import { BodyTooLarge, readRequestJson } from '@/lib/request-json';
 import { z } from 'zod';
 import { openDb } from '../../../lib/db';
 
@@ -14,7 +15,7 @@ export const transcriptRequestSchema = z.strictObject({
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const { lines } = transcriptRequestSchema.parse(await request.json());
+    const { lines } = transcriptRequestSchema.parse(await readRequestJson(request));
     const db = openDb();
 
     try {
@@ -28,6 +29,7 @@ export async function POST(request: Request): Promise<Response> {
       db.close();
     }
   } catch (error) {
+    if (error instanceof BodyTooLarge) return Response.json({ error: 'Request body too large' }, { status: 413 });
     return Response.json({ error: error instanceof Error ? error.message : 'Unknown transcript error' });
   }
 }

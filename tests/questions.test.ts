@@ -87,11 +87,11 @@ describe('buildQuestionPrompt', () => {
     expect(prompt).toMatch(/AAMC medium/i);
   });
 
-  test('includes the grounding text when provided', () => {
+  test('keeps grounding text out of the governing prompt', () => {
     const groundingText = 'Water autoionizes with Kw = 1.0e-14 at 25 C.';
     const prompt = buildQuestionPrompt({ ...baseParams, groundingText });
-    expect(prompt).toContain(groundingText);
-    expect(prompt).toMatch(/source/i);
+    expect(prompt).not.toContain(groundingText);
+    expect(prompt).toMatch(/untrusted/i);
   });
 
   test('omits the source section when no grounding text is provided', () => {
@@ -141,10 +141,13 @@ describe('generateQuestion invariant enforcement', () => {
   function stubChatCompletion(question: Record<string, unknown>) {
     vi.stubEnv('OPENAI_API_KEY', 'test-key');
     vi.stubEnv('QUESTION_MODEL', 'gpt-5.1');
-    return vi.fn(async () => ({
-      ok: true,
-      json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }),
-    }));
+    return vi.fn(async (...request: Parameters<typeof fetch>) => {
+      void request;
+      return {
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: JSON.stringify(question) } }] }),
+      };
+    });
   }
 
   test('accepts a response whose categoryId/difficulty/style match the request', async () => {
@@ -154,6 +157,26 @@ describe('generateQuestion invariant enforcement', () => {
 
     await expect(generateQuestion(requestParams)).resolves.toMatchObject({ categoryId: '5A', difficulty: 2 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestBody = JSON.parse(fetchMock.mock.calls[0][1]?.body as string) as Record<string, unknown>;
+    expect(requestBody.max_completion_tokens).toBe(4096);
+  });
+
+  test('does not include a provider error body in the thrown diagnostic', async () => {
+    const sentinel = 'PRIVATE_SOURCE_TEXT_42';
+    vi.stubEnv('OPENAI_API_KEY', 'test-key');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 400, text: async () => sentinel }))
+    );
+
+    let message = '';
+    try {
+      await generateQuestion(requestParams);
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(message).toContain('400');
+    expect(message).not.toContain(sentinel);
   });
 
   test('retries once and throws when categoryId does not match the request', async () => {

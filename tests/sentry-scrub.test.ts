@@ -40,7 +40,7 @@ describe('scrubEvent', () => {
       release: '1.0.0',
       tags: { instance: 'demo' },
       exception: {
-        values: [{ type: 'Error', value: 'safe error message' }],
+        values: [{ type: 'Error', value: SENTINEL }],
       },
       request: {
         url: '/api/tool',
@@ -64,7 +64,7 @@ describe('scrubEvent', () => {
     expect(scrubbed.tags?.instance).toBe('demo');
     expect(scrubbed.request?.url).toBe('/api/tool');
     expect(scrubbed.exception?.values?.[0].type).toBe('Error');
-    expect(scrubbed.exception?.values?.[0].value).toBe('safe error message');
+    expect(scrubbed.exception?.values?.[0].value).toBeUndefined();
     expect(scrubbed.breadcrumbs).toBeUndefined();
     expect(scrubbed.contexts).toBeUndefined();
     expect(scrubbed.extra).toBeUndefined();

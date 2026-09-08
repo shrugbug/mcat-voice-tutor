@@ -6,53 +6,58 @@ import { cosine, fromBlob, searchMaterials } from './rag';
 import { getProfile, recordEpisode, recordResult, writeSessionSummary } from './student';
 import { VIEW_COMPONENT_NAMES } from './views';
 
+const identifierSchema = z.string().max(64);
+const querySchema = z.string().max(4000);
+const storedTextSchema = z.string().max(8000);
+const noteSchema = z.string().max(2000);
+
 const recordResultArgsSchema = z.strictObject({
-  categoryId: z.string(),
+  categoryId: identifierSchema,
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   correct: z.boolean(),
   errorType: z.enum(['content', 'reasoning', 'misread']).optional(),
-  mode: z.string(),
-  note: z.string().optional(),
+  mode: identifierSchema,
+  note: noteSchema.optional(),
 });
 
 const recordEpisodeArgsSchema = z.strictObject({
-  categoryId: z.string(),
-  stem: z.string(),
-  options: z.tuple([z.string(), z.string(), z.string(), z.string()]),
+  categoryId: identifierSchema,
+  stem: storedTextSchema,
+  options: z.tuple([querySchema, querySchema, querySchema, querySchema]),
   correctIndex: z.number().int().min(0).max(3),
   chosenIndex: z.number().int().min(0).max(3),
-  errorType: z.string().optional(),
-  misconception: z.string().optional(),
-  studentReasoning: z.string().optional(),
+  errorType: identifierSchema.optional(),
+  misconception: noteSchema.optional(),
+  studentReasoning: storedTextSchema.optional(),
 });
 
 const recallSimilarMistakesArgsSchema = z.strictObject({
-  query: z.string(),
+  query: querySchema,
   k: z.number().int().positive().max(5).optional(),
 });
 
 const generateQuestionArgsSchema = z.strictObject({
-  categoryId: z.string(),
+  categoryId: identifierSchema,
   difficulty: z.union([z.literal(1), z.literal(2), z.literal(3)]),
   style: z.enum(['discrete', 'passage']),
   useGrounding: z.boolean().optional(),
 });
 
 const searchMaterialsArgsSchema = z.strictObject({
-  query: z.string(),
-  k: z.number().int().positive().optional(),
+  query: querySchema,
+  k: z.number().int().positive().max(5).optional(),
 });
 
 const recordFeedbackArgsSchema = z.strictObject({
   kind: z.enum(['ui', 'ux', 'content', 'other']),
   quote: z.string().min(1).max(1000),
-  paraphrase: z.string().optional(),
+  paraphrase: noteSchema.optional(),
 });
 
 const endSessionSummaryArgsSchema = z.strictObject({
-  mode: z.string(),
-  summary: z.string(),
-  focusNext: z.string(),
+  mode: identifierSchema,
+  summary: storedTextSchema,
+  focusNext: querySchema,
 });
 
 const topicsSchema = z.array(z.string());
@@ -179,7 +184,7 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         query: { type: 'string', description: 'The material search query.' },
-        k: { type: 'integer', minimum: 1, description: 'Optional maximum number of chunks.' },
+        k: { type: 'integer', minimum: 1, maximum: 5, description: 'Optional maximum number of chunks.' },
       },
       required: ['query'],
       additionalProperties: false,
@@ -304,9 +309,8 @@ export async function dispatchTool(db: DB, name: string, args: unknown): Promise
 
     case 'record_result': {
       const result = recordResultArgsSchema.parse(args);
-      recordResult(db, result);
-      const category = getProfile(db).categories.find(({ id }) => id === result.categoryId);
-      return { ok: true, newMastery: category!.mastery };
+      const newMastery = recordResult(db, result);
+      return { ok: true, newMastery };
     }
 
     case 'record_episode': {

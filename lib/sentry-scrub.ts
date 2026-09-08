@@ -26,8 +26,8 @@ export interface ScrubbableEvent {
 
 /**
  * Allowlist of Sentry event fields. Student content is stripped from request bodies, user
- * identity, breadcrumbs, contexts, and extra. We keep only safe metadata and the bare exception
- * type/value (which the app already sanitizes before reaching Sentry).
+ * identity, breadcrumbs, contexts, extra, and exception messages. We keep only safe metadata and
+ * the bare exception type; arbitrary exception messages may contain student or corpus text.
  */
 export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
   const allowed: ScrubbableEvent = {};
@@ -44,7 +44,6 @@ export function scrubEvent<T extends ScrubbableEvent>(event: T): T {
     allowed.exception = {
       values: event.exception.values.map((value) => ({
         type: value.type,
-        value: value.value,
       })),
     };
   }

@@ -87,11 +87,11 @@ describe('buildQuestionPrompt', () => {
     expect(prompt).toMatch(/AAMC medium/i);
   });
 
-  test('includes the grounding text when provided', () => {
+  test('keeps grounding text out of the governing prompt', () => {
     const groundingText = 'Water autoionizes with Kw = 1.0e-14 at 25 C.';
     const prompt = buildQuestionPrompt({ ...baseParams, groundingText });
-    expect(prompt).toContain(groundingText);
-    expect(prompt).toMatch(/source/i);
+    expect(prompt).not.toContain(groundingText);
+    expect(prompt).toMatch(/untrusted/i);
   });
 
   test('omits the source section when no grounding text is provided', () => {

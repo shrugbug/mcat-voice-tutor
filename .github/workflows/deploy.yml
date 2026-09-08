@@ -19,20 +19,6 @@ jobs:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          GITHUB_SHA: ${{ github.sha }}
         run: |
-          set -euo pipefail
-          install -d -m 700 ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
-          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
-          # The deployer key on the VPS is a forced command: it can only run mcat-deploy.
-          # Retry the connection a few times: runner-to-VPS SSH timed out once on 2026-09-03.
-          for attempt in 1 2 3; do
-            if ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o ConnectTimeout=30 \
-                 "deployer@$VPS_HOST" deploy; then exit 0; fi
-            rc=$?
-            # 255 is an ssh transport failure; anything else is a real deploy error.
-            [ "$rc" -eq 255 ] || exit "$rc"
-            echo "ssh attempt $attempt failed (rc=$rc), retrying in 20s"; sleep 20
-          done
-          exit 255
+          bash scripts/deploy-remote.sh

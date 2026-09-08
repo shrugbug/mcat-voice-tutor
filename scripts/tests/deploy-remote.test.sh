@@ -73,4 +73,26 @@ run_case "short-vs-full sha match" "$TMP_DIR/fake_success.sh" "01d2e70aa11bb22cc
 run_case "short-vs-full sha mismatch" "$TMP_DIR/fake_mismatch.sh" "f00dbabe11bb22cc33dd44ee55ff6677889900ab" 1
 run_case "short sha too short" "$TMP_DIR/fake_short_fail.sh" "deadbeef" 1
 
+run_health_case() {
+  local name="$1" code="$2" expected_exit="$3"
+  printf '#!/usr/bin/env bash\nprintf "%%s" "%s"\n' "$code" > "$TMP_DIR/fake_curl_$code.sh"
+  chmod +x "$TMP_DIR/fake_curl_$code.sh"
+  set +e
+  output="$(VPS_HOST=testhost \
+    GITHUB_SHA="01d2e70aa11bb22cc33dd44ee55ff6677889900ab" \
+    MCAT_DEPLOY_SSH_BIN="$TMP_DIR/fake_success.sh" \
+    MCAT_DEPLOY_CURL_BIN="$TMP_DIR/fake_curl_$code.sh" \
+    MCAT_DEPLOY_RETRY_SLEEP_SECONDS=0 \
+    bash "$SCRIPT" 2>&1)"
+  status=$?
+  set -e
+  if [ "$status" -ne "$expected_exit" ]; then
+    echo "FAIL: $name (expected $expected_exit, got $status)"; echo "$output"; return 1
+  fi
+  echo "PASS: $name"
+}
+run_health_case "health check 401 accepted" 401 0
+run_health_case "health check 403 (Cloudflare) accepted" 403 0
+run_health_case "health check 200 rejected" 200 1
+
 echo "All deploy-remote tests passed"

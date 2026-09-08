@@ -79,10 +79,15 @@ fi
 
 if [ "${MCAT_SKIP_HEALTH_CHECK:-0}" != "1" ]; then
   auth_code="$($CURL_BIN -s -o /tmp/mcat-deploy-verify-body -w '%{http_code}' "$PUBLIC_URL")"
-  if [ "$auth_code" != "401" ]; then
-    echo "ERROR: expected 401 from $PUBLIC_URL, got $auth_code" >&2
-    exit 1
-  fi
+  # nginx answers 401 (basic auth); Cloudflare answers 403 to GitHub runner IPs (bot challenge).
+  # Either proves unauthenticated access is refused. Anything else, especially 200, is a failure.
+  case "$auth_code" in
+    401|403) ;;
+    *)
+      echo "ERROR: expected 401 or 403 from $PUBLIC_URL, got $auth_code" >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "Remote deploy verification succeeded"

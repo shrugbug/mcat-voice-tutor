@@ -70,11 +70,6 @@
   only, still unimplemented. `docs/tuning/proposal-2026-08-11.md` NOT applied (0 keyword hits
   in `lib/instructions.ts`); local nightly-tune shows 0 attempts/day since 08-16 (local DB only,
   says nothing about VPS usage). `proposal-2026-08-10.md` remains **shelved, do not apply**.
-- History rewrite: all commits on main + both feature branches
-  now authored by Shreya Sachdev <shreya.sachdev@gmail.com>; old history at tag
-  `backup/pre-author-rewrite-2026-08-24`. Consequences: the VPS clone needs
-  `git fetch && git reset --hard origin/main` on next deploy (non-fast-forward), and Sentry
-  releases (SHA-derived) will restart under new IDs.
 - Next: buy mcat.coach -> DNS + cert; the student's section scores -> scored seed; 8 skill-audit
   flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
   whether to merge `docs/specs-multiuser/` into main.

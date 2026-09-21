@@ -1,7 +1,7 @@
 # Local / Open-Source Alternatives to the OpenAI Realtime API (voice loop)
 
 Researched 2026-08-10. Question: can the Realtime API voice loop in the MCAT tutor be
-replaced with open-source models running on Vishal's own hardware?
+replaced with open-source models running on local hardware?
 
 ---
 
@@ -12,7 +12,7 @@ The fleet has **two** candidate machines — and the daily driver is *not* the M
 | Machine | Chip / RAM | Role | Reachability |
 |---|---|---|---|
 | MacBook Air **M4, 32 GB** (Mac16,13) | 10-core M4 | Daily driver, roams home ↔ lab | self |
-| MacBook Pro **M2 Max, 96 GB / 1 TB** | M2 Max | Heavy-lifter / shared workstation | `ssh m2max` (Tailscale SSH) or LAN `the LAN address` |
+| MacBook Pro **M2 Max, 96 GB / 1 TB** | M2 Max | Heavy-lifter / shared workstation | `ssh m2max` (Tailscale SSH) or the LAN address |
 | 2× Intel iMacs (24 GB) | Intel | MakerLab | Irrelevant for inference (no SSH, no GPU) |
 
 The M2 Max already runs **Ollama** with `qwen3.5:35b-a3b` (23 GB, MoE), `gemma4:31b`

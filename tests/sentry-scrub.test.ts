@@ -23,7 +23,7 @@ describe('scrubEvent', () => {
   });
 
   test('never attaches a user identity', () => {
-    expect(scrubEvent({ user: { id: 'aryan', email: 'a@example.com' } }).user).toBeUndefined();
+    expect(scrubEvent({ user: { id: 'student-1', email: 'a@example.com' } }).user).toBeUndefined();
   });
 
   test('is a no-op on an event with neither field', () => {

@@ -19,7 +19,7 @@ Both instances live on the same VPS checkout at `/root/repos/mcat` (ssh alias `v
 | Port | `3007` | `3008` |
 | Database | `data/mcat.db` | `data/demo.db` |
 | Auth / audience | Basic auth, single student | Basic auth (since 2026-08-10), credentials in `DEMO_CREDENTIALS.txt` on the VPS |
-| Personalization | `STUDENT_NAME`/`STUDENT_FILE_LABEL` in `app/page.tsx` (`Aryan`) | Generic greeting (`future doctor`) via `window.location.hostname` |
+| Personalization | `NEXT_PUBLIC_STUDENT_NAME`/`NEXT_PUBLIC_STUDENT_FILE_LABEL` in the instance `.env` | Generic greeting (`future doctor`) via `window.location.hostname` |
 
 Common VPS commands:
 

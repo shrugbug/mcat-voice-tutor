@@ -1,5 +1,5 @@
 ### 2026-08-10 (part 1)
-- Built the complete voice examiner from empty repo: Realtime voice + GPT-5.1 question brain, student model w/ episodic memory + spaced rep, PDF RAG, render_view UI, photo input, reconnect, briefing/tuner launchd jobs, Aryan landing page. 180+ tests, multi-agent build (Codex/cursor/opencode/devin + Claude).
+- Built the complete voice examiner from empty repo: Realtime voice + GPT-5.1 question brain, student model w/ episodic memory + spaced rep, PDF RAG, render_view UI, photo input, reconnect, briefing/tuner launchd jobs, personalized landing page. 180+ tests, multi-agent build (Codex/cursor/opencode/devin + Claude).
 
 ### 2026-08-10 (part 2)
 - Completed: dogfooded full UI (fixed table overflow affordance + passage tables + app title; /debug/views harness); transcript + UI/UX-feedback capture feeding nightly tuner; deployed to VPS (mcat.illinihunt.org, basic auth, rotated); domain shortlist checked (mcat.coach chosen, user checkout pending); OSS-voice research (verdict: keep Realtime API); skills library unhobbled (37 trimmed, 8 flagged); multi-user launch spec suite + pricing on feature/multi-user-launch.
@@ -14,7 +14,7 @@
   have never met — so `proposal-2026-08-10.md` was built on synthetic data and its UI/UX section
   says "no feedback today" while four real items sat unread on the VPS.
 - Also found: `data_table` caps at 30 rows vs 34 categories (confirmed root cause of the
-  curriculum-overview failure Aryan hit twice); `/api/tool` swallows every tool error unlogged;
+  curriculum-overview failure the student hit twice); `/api/tool` swallows every tool error unlogged;
   the demo mic is capturing bystander room audio into a public db.
 - Specced the fix — 5 workstreams on `feat/tuning-loop-and-interfaces` (pushed, no PR yet):
   `docs/superpowers/specs/2026-08-10-tuning-loop-and-interfaces-design.md`. Approved, not yet
@@ -70,31 +70,27 @@
   only, still unimplemented. `docs/tuning/proposal-2026-08-11.md` NOT applied (0 keyword hits
   in `lib/instructions.ts`); local nightly-tune shows 0 attempts/day since 08-16 (local DB only,
   says nothing about VPS usage). `proposal-2026-08-10.md` remains **shelved, do not apply**.
-- History rewrite (by control, Vishal's decision): all commits on main + both feature branches
+- History rewrite: all commits on main + both feature branches
   now authored by Shreya Sachdev <shreya.sachdev@gmail.com>; old history at tag
   `backup/pre-author-rewrite-2026-08-24`. Consequences: the VPS clone needs
   `git fetch && git reset --hard origin/main` on next deploy (non-fast-forward), and Sentry
-  releases (SHA-derived) will restart under new IDs. Local git config is still Vishal — set
-  `git config user.name/user.email` in this repo if future commits should match.
-- Next: buy mcat.coach -> DNS + cert; Aryan's section scores -> scored seed; 8 skill-audit
+  releases (SHA-derived) will restart under new IDs.
+- Next: buy mcat.coach -> DNS + cert; the student's section scores -> scored seed; 8 skill-audit
   flags; decide/apply `proposal-2026-08-11.md`; build `feat/persisted-view-state`; decide
   whether to merge `docs/specs-multiuser/` into main.
 
 ### 2026-09-02
-- Completed: repo transferred to `shrugbug/mcat` (Shreya accepted same day; Vishal now has
-  Write; local + VPS remotes repointed). Auto-deploy: `.github/workflows/deploy.yml` runs on
+- Completed: repo transferred to `shrugbug/mcat` (local + VPS remotes repointed). Auto-deploy: `.github/workflows/deploy.yml` runs on
   every push to `main`, SSHes as `deployer` with a forced-command key that can only run
   `/usr/local/bin/mcat-deploy` (fetch, reset to origin/main, install, build, pm2 restart,
   health check, `/var/log/mcat-deploy.log`). Verified on three pushes; one runner-side SSH
   timeout led to a 3x connect retry in the workflow. Secrets survived the transfer. Linux user
-  `shreya` (sudo limited to mcat-deploy + mcat pm2 cmds) has her key installed, untested from
-  her side. VPS moved off the pre-rewrite SHA, closing the `reset --hard` item. Runbook
-  corrected: demo has had basic auth since 08-10. Note to her:
-  `docs/drafts/2026-09-02-shreya-vps-access.txt` (not yet sent as of wrap-up).
+  `shreya` (sudo limited to mcat-deploy + mcat pm2 cmds) has a key installed, untested. VPS moved off the pre-rewrite SHA, closing the `reset --hard` item. Runbook
+  corrected: demo has had basic auth since 08-10.
 - Declined for now: a staging instance for branch previews (second checkout, port 3009,
-  nginx vhost + cert, manual-dispatch workflow). She experiments locally with her own OpenAI
-  key. Revisit if she asks for a shared preview URL.
-- Next: mcat.coach DNS + cert; Aryan's scores -> scored seed; 8 skill-audit flags; decide
+  nginx vhost + cert, manual-dispatch workflow). Local experimentation uses a separate OpenAI
+  key. Revisit if a shared preview URL is needed.
+- Next: mcat.coach DNS + cert; the student's scores -> scored seed; 8 skill-audit flags; decide
   `proposal-2026-08-11.md`; build `feat/persisted-view-state` (19 commits behind main);
   `docs/specs-multiuser/`. Main is unprotected and every push rebuilds prod: consider a
   build check on PRs.

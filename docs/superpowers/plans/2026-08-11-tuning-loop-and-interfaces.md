@@ -1518,7 +1518,7 @@ describe('scrubEvent', () => {
   });
 
   test('never attaches a user identity', () => {
-    expect(scrubEvent({ user: { id: 'aryan', email: 'a@example.com' } }).user).toBeUndefined();
+    expect(scrubEvent({ user: { id: 'student-1', email: 'a@example.com' } }).user).toBeUndefined();
   });
 
   test('is a no-op on an event with neither field', () => {
@@ -1826,4 +1826,4 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
 
 **Known external dependency:** Task 9 and Task 10 are code-complete without a Sentry DSN but transmit nothing until the user creates the project. Both are written to be inert rather than broken when the env vars are absent, so they can land and be verified before that happens.
 
-**Deployment note not covered by any task:** Tasks 1, 2, 7, and 8 change the app itself and only reach Aryan after a VPS deploy (`git pull` + `npm run build` + `pm2 restart mcat mcat-demo`). Task 2's `tool_errors` table must exist in the remote dbs before Task 4's combine will report tool errors from them — the table is created by `openDb()` on first run after deploy.
+**Deployment note not covered by any task:** Tasks 1, 2, 7, and 8 change the app itself and only reach the student after a VPS deploy (`git pull` + `npm run build` + `pm2 restart mcat mcat-demo`). Task 2's `tool_errors` table must exist in the remote dbs before Task 4's combine will report tool errors from them — the table is created by `openDb()` on first run after deploy.

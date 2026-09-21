@@ -47,6 +47,11 @@ the example and fill it in — never commit the real file.
 | `MCAT_DB` | no | Database path. Lets one checkout serve multiple instances. |
 | `MCAT_INSTANCE` | no | Instance label (`prod`, `demo`) used for Sentry tags. Defaults to `prod`. |
 | `SENTRY_*`, `NEXT_PUBLIC_SENTRY_DSN` | no | Error monitoring. Everything is inert when the DSN is unset. |
+| `NEXT_PUBLIC_STUDENT_NAME` | no | First name in the landing greeting. Inlined at build time. |
+| `NEXT_PUBLIC_STUDENT_FILE_LABEL` | no | Short label in the landing eyebrow. Inlined at build time. |
+| `TOOL_RATE_LIMIT` | no | Tool calls per client session per minute. Default 30. |
+| `SESSION_RATE_LIMIT` | no | Credential mints per client per ten minutes. Default 10. |
+| `TRUST_PROXY` | no | Read the client IP from `X-Forwarded-For`. Enable **only** behind a single trusted proxy hop. Default `false`. |
 
 ## How it works
 
@@ -96,6 +101,28 @@ acknowledged, which wedges the session.
 - **Tool failures** return structured errors the model can recover from and are recorded to the
   database, rather than throwing inside the data-channel handler.
 - **Sentry** is optional and scrubs PII before sending.
+
+## Limits and abuse controls
+
+Every paid path has a ceiling, because a stolen or shared credential would otherwise translate
+directly into OpenAI spend.
+
+- **Rate limits** — `SESSION_RATE_LIMIT` mints per client per ten minutes and `TOOL_RATE_LIMIT`
+  tool calls per session per minute, both returning `429` with `Retry-After`. Clients are
+  identified by a signed, HttpOnly cookie issued at mint time, falling back to an IP bucket when
+  the cookie is missing or forged (`lib/client-identity.ts`, `lib/rate-limit.ts`).
+- **Output ceiling** — question generation is capped at 4,096 completion tokens.
+- **Input ceilings** — every server-dispatched string has a maximum length and material search
+  returns at most five chunks, so a single call cannot request the whole corpus.
+- **Body limit** — a streaming reader rejects request bodies over 1 MiB with `413` before JSON is
+  parsed, including chunked transfers with no declared length.
+- **Retrieved text is untrusted** — corpus chunks are escaped and passed in a separate message
+  that forbids following instructions found inside them, rather than in the system prompt.
+- **Headers** — report-only CSP plus enforced `frame-ancestors`, `X-Content-Type-Options` and
+  `Referrer-Policy` (`next.config.ts`).
+
+Limits are per process and reset on restart; a shared store would be required for multi-process
+deployment. These controls bound abuse — **they are not authentication.**
 
 ## Tests
 
@@ -147,7 +174,9 @@ for the provenance analysis of the retrieval corpus.
 ## Known gaps
 
 - **No latency instrumentation.** Voice-to-voice latency is not measured.
-- One open dependency advisory (`fast-uri`, via the Sentry webpack plugin) — build-time only, not
-  reachable from user input.
+- **No application-level authentication.** Access control lives entirely in the reverse proxy, so
+  every caller who gets past it shares one database. The rate limits above bound abuse but do not
+  identify users. An app session layer is the top item of remaining work.
+- Diagnostic metadata still accepts caller-supplied property names, which can forge log lines.
 - The reverse-proxy configuration that routes hostnames to ports on the server is not documented
   in this repo.

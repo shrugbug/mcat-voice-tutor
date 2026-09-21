@@ -51,18 +51,13 @@ Details and deploy-user setup: `docs/operations.md` section 1.
 ## Session Log
 
 ### 2026-09-04
-- Completed: orientation only — no code changes, nothing to commit. Resolved Shreya's question
-  about the `mcat.illinihunt.org` (prod) basic-auth password: found on VPS at
-  `/root/repos/mcat/the prod credentials file` (user `aryan`), confirmed live with a `401` on
-  the public URL. Shreya cannot read this herself — her sudo grant has no `/root` shell access,
-  only `mcat-deploy` + mcat pm2 commands. `docs/operations.md` §1 documents where the *demo*
-  credentials live (`DEMO_CREDENTIALS.txt`) but never mentions `the prod credentials file` for
-  prod; offered to add that line, not yet done pending Vishal's go-ahead. `feat/persisted-view-state`
+- Completed: orientation only — no code changes, nothing to commit. Resolved a question about
+  where the prod basic-auth credentials live on the server; the deploy account has no shell
+  access to read them, only `mcat-deploy` + mcat pm2 commands. `docs/operations.md` §1 documents
+  the demo credential location but not the prod one; adding that line is pending. `feat/persisted-view-state`
   worktree still clean/unimplemented, now 20 commits behind main (was 19 on 09-02). No open
   GitHub issues/PRs. No Codex activity on this repo since 09-02.
-- Next: decide whether to (a) document `the prod credentials file` in `docs/operations.md`,
-  (b) hand Shreya the prod password directly since she has no path to read it herself; send
-  `docs/drafts/2026-09-02-shreya-vps-access.txt` if still unsent; mcat.coach DNS + cert; Aryan's
-  scores -> scored seed; 8 skill-audit flags; decide `proposal-2026-08-11.md`; build
+- Next: decide whether to document the prod credential location in `docs/operations.md`;
+  mcat.coach DNS + cert; the student's scores -> scored seed; 8 skill-audit flags; decide `proposal-2026-08-11.md`; build
   `feat/persisted-view-state` (20 behind main — rebase before starting); `docs/specs-multiuser/`.
   Main is unprotected and every push rebuilds prod: consider a build check on PRs.

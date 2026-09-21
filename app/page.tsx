@@ -103,11 +103,12 @@ function formatElapsed(ms: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// The student's first name, shown in the pre-connect landing greeting.
-const STUDENT_NAME = 'Aryan';
-// Landing eyebrow's right-hand "file" label -- not derived from STUDENT_NAME since it carries
-// the surname, which the app has no other use for.
-const STUDENT_FILE_LABEL = 'A.';
+// The student's first name, shown in the pre-connect landing greeting. Overridable per
+// deployment; the demo instance swaps in a generic greeting by hostname at runtime.
+const STUDENT_NAME = process.env.NEXT_PUBLIC_STUDENT_NAME || 'Aryan';
+// Landing eyebrow's right-hand "file" label -- not derived from STUDENT_NAME, and deliberately
+// an initial only so no surname is carried in the source.
+const STUDENT_FILE_LABEL = process.env.NEXT_PUBLIC_STUDENT_FILE_LABEL || 'A.';
 
 const EXAM_DATE = process.env.NEXT_PUBLIC_EXAM_DATE ?? '2026-08-23';
 // First bubble of the scantron countdown. Fixed rather than "today" so the row has a stable
@@ -185,7 +186,7 @@ export default function Home() {
   // mismatch), then get corrected to the real client clock in the effect below.
   const [greetingWord, setGreetingWord] = useState<'morning' | 'afternoon' | 'evening'>('morning');
   const [todayIso, setTodayIso] = useState(SCANTRON_START_DATE);
-  // The demo instance shares this build with Aryan's instance, so personalization
+  // The demo instance shares this build with the student instance, so personalization
   // switches on hostname at runtime (build-time env can't differ between them).
   const [isDemo, setIsDemo] = useState(false);
   useEffect(() => {

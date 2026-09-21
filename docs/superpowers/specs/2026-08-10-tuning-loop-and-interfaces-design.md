@@ -256,7 +256,7 @@ throwing. No live API calls in tests.
 
 `lib/views.ts:68` caps `data_table` at `.max(30)` rows. There are 34 categories, so the
 curriculum-overview table can never render — the confirmed root cause of the "interface hiccup"
-Aryan reported twice (prod feedback #3). Raise the cap to 60 and instruct the model to split by
+The student reported twice (prod feedback #3). Raise the cap to 60 and instruct the model to split by
 section for anything larger.
 
 ---
